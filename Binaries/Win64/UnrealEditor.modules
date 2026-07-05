@@ -1,0 +1,8 @@
+{
+	"BuildId": "33043543",
+	"Modules": 
+	{
+		"MetaDataEditor": "UnrealEditor-MetaDataEditor.dll",
+		"MetaDataPlugin": "UnrealEditor-MetaDataPlugin.dll"
+	}
+}

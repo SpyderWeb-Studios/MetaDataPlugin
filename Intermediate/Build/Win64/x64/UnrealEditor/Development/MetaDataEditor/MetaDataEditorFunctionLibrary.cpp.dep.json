@@ -1,0 +1,15 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "c:\\users\\spyde\\onedrive\\documents\\unreal projects\\plugindev\\plugins\\metadataplugin\\source\\metadataeditor\\private\\functionlibraries\\metadataeditorfunctionlibrary.cpp",
+        "ProvidedModule": "",
+        "PCH": "c:\\users\\spyde\\onedrive\\documents\\unreal projects\\plugindev\\intermediate\\build\\win64\\x64\\plugindeveditor\\development\\unrealed\\sharedpch.unrealed.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "c:\\users\\spyde\\onedrive\\documents\\unreal projects\\plugindev\\plugins\\metadataplugin\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\metadataeditor\\definitions.metadataeditor.h",
+            "c:\\users\\spyde\\onedrive\\documents\\unreal projects\\plugindev\\plugins\\metadataplugin\\source\\metadataeditor\\public\\functionlibraries\\metadataeditorfunctionlibrary.h",
+            "c:\\users\\spyde\\onedrive\\documents\\unreal projects\\plugindev\\plugins\\metadataplugin\\intermediate\\build\\win64\\unrealeditor\\inc\\metadataeditor\\uht\\metadataeditorfunctionlibrary.generated.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}
