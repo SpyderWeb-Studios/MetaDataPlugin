@@ -4,7 +4,9 @@ public class MetaDataEditor : ModuleRules
 {
 	public MetaDataEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "UnrealEd"});
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "UnrealEd",
+			"Slate",
+			"SlateCore",});
 		
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
@@ -15,7 +17,9 @@ public class MetaDataEditor : ModuleRules
 			"StructUtils",       // Required for FInstancedStruct
 			"DataRegistry",      // Required for FDataRegistryId
 			"GameplayTags",      // Required for FGameplayTagQuery
-            "EditorSubsystem"    // Required for the EditorSubsystem
+            "EditorSubsystem",    // Required for the EditorSubsystem,
+            "ToolMenus",
+            "Projects"
 		});
 		
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
