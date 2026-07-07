@@ -14,17 +14,15 @@ USTRUCT(BlueprintType)
 struct FMetaDataTrait_Base
 {
 	GENERATED_BODY()
-	
-	virtual ~FMetaDataTrait_Base() = default;
-	
-	virtual FString ToString() const;
 
 	UPROPERTY(EditDefaultsOnly, AdvancedDisplay)
 	TSoftObjectPtr<UDataTable> TraitRegistry;
 	
 };
 
-inline FString FMetaDataTrait_Base::ToString() const
+
+FString static GetMetaDataTraitName(const FMetaDataTrait_Base& Trait)
 {
-	return "Meta Data Trait Base";
+	// Use the static method provided by the USTRUCT macro
+	return FMetaDataTrait_Base::StaticStruct()->GetName();
 }
