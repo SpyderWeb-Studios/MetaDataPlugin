@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "CoreMinimal.h"
 #include "InstancedStruct.h"
+#include "StructUtils/InstancedStruct.h"
 #include "Engine/DataTable.h"
 #include "Traits/FMetaDataTrait_Base.h"
 #include "FMetaDataRegistryItem.generated.h"

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "InstancedStruct.h"
+#include "StructUtils/InstancedStruct.h"
 #include "Libraries/Traits/FMetaDataTrait_Base.h"
 #include "UObject/Interface.h"
 
