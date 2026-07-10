@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Objects/MetaDataNamingConvention.h"
+#include <Objects/Providers/MetaDataStorageProvider_Base.h>
 #include "MetaDataBakingSettingsDataAsset.generated.h"
 
 #pragma once
@@ -13,6 +14,9 @@ USTRUCT(BlueprintType)
 struct FMetadataProviderArray
 {
 	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, Instanced)
+	TArray<UMetaDataStorageProvider_Base*> ProviderArray;
 
 };
 

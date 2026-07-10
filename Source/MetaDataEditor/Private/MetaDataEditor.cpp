@@ -3,6 +3,8 @@
 #include "MetaDataEditor/Public/MetaDataEditor.h"
 #include "ToolMenus.h"
 #include "Interfaces/IPluginManager.h"
+#include <DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h>
+#include <FunctionLibraries/MetaDataEditorFunctionLibrary.h>
 
 
 DEFINE_LOG_CATEGORY(MetaDataEditor);
@@ -80,18 +82,53 @@ void FMetaDataEditor::PopulateBakeMenu(UToolMenu* Menu)
 
 void FMetaDataEditor::ExecuteBakeAll()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Executing Full Project Bake..."));
-    // Call your Commandlet/Subsystem logic here
+	UE_LOG(LogTemp, Display, TEXT("MetadataBaker: Executing Full Project Bake..."));
+
+	TArray<FDirectoryPath> DirectoriesToBake;
+
+	// A. Add the Base Game explicitly
+	FDirectoryPath BaseGameDir;
+	BaseGameDir.Path = TEXT("/Game");
+	DirectoriesToBake.Add(BaseGameDir);
+
+	// B. Dynamically discover all DLCs / Mods
+	// We only want plugins that actually contain content, ignoring pure-code plugins.
+	TArray<TSharedRef<IPlugin>> EnabledPlugins = IPluginManager::Get().GetEnabledPluginsWithContent();
+
+	for (const TSharedRef<IPlugin>& Plugin : EnabledPlugins)
+	{
+		// Optional: If you exclusively want Game Features, you can check Plugin->GetLoadedFrom() 
+		// or check if its descriptor type is a GameFeature. 
+
+		// Get the exact virtual path string (e.g., "/MyModName")
+		FDirectoryPath PluginDir;
+		PluginDir.Path = Plugin->GetMountedAssetPath();
+
+		DirectoriesToBake.Add(PluginDir);
+	}
+
+	// C. Process every discovered directory
+	for (const FDirectoryPath& Dir : DirectoriesToBake)
+	{
+		UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(Dir);
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("MetadataBaker: Full Project Bake Complete."));
 }
 
 void FMetaDataEditor::ExecuteBakeBaseGameOnly()
 {
     UE_LOG(LogTemp, Warning, TEXT("Executing Base Game Bake..."));
+	FDirectoryPath BaseGameDir;
+	BaseGameDir.Path = TEXT("/Game");
+
+	UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(BaseGameDir);
 }
 
 void FMetaDataEditor::ExecuteBakeSpecificDLC(FName TargetFolder)
 {
     UE_LOG(LogTemp, Warning, TEXT("Executing Mod Bake for: %s"), *TargetFolder.ToString());
+	UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(FDirectoryPath(TargetFolder.ToString()));
 }
 
 
