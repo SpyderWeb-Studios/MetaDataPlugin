@@ -7,31 +7,32 @@ void UMetaDataStorage_DataTable::Flush_Implementation()
 {
     if (TargetDataTable.IsNull())
     {
+        UE_LOG(LogMetaDataStorageProvider, Error, TEXT("Flush failed: Target Data Table [%s] is null when load attempted ."), *TargetDataTable.ToString());
         return;
     }
 
     UDataTable* LoadedTable = TargetDataTable.LoadSynchronous();
     if (!IsValid(LoadedTable))
     {
+        UE_LOG(LogMetaDataStorageProvider, Error, TEXT("Flush failed: Target Data Table [%s] not valid when load attempted ."), *GetNameSafe(LoadedTable));
+
+        return;
+    }
+    
+    // Safety Check: Ensure external users haven't assigned an incompatible Data Table
+    if (LoadedTable->RowStruct != FMetaDataRegistryItem::StaticStruct())
+    {
+        UE_LOG(LogMetaDataStorageProvider, Error, TEXT("Flush failed: Target Data Table '%s' is not configured to use the FMetaDataRegistryItem row struct."), *LoadedTable->GetName());
         return;
     }
 
     // Call TargetTable->Modify() to alert the engine's undo/redo history.
     LoadedTable->Modify();
-    for (const TPair<FName, FInstancedStruct>& CachedRow : CachedRows)
+    for (TPair<FName, FMetaDataRegistryItem> CachedRow : CachedRows)
     {
-        // 1. Get the raw memory pointer from the instanced struct
-        const uint8* RawRowMemory = CachedRow.Value.GetMemory();
-
-        if (RawRowMemory != nullptr)
-        {
-            // 2. Reinterpret cast the memory address to the base reference.
-            // This avoids template type-matching assertions and prevents C++ object slicing.
-            const FTableRowBase& RowDataRef = *reinterpret_cast<const FTableRowBase*>(RawRowMemory);
-
-            // 3. Pass the polymorphic reference into the data table
-            LoadedTable->AddRow(CachedRow.Key, RowDataRef);
-        }
+        // 3. Pass the polymorphic reference into the data table
+        LoadedTable->AddRow(CachedRow.Key, CachedRow.Value);
+    
     }
 
     // Call TargetTable->MarkPackageDirty() so the editor prompts the user to save the modified table[cite: 160].
@@ -63,8 +64,11 @@ bool UMetaDataStorage_DataTable::ValidateTarget_Implementation(const UScriptStru
     return true;
 }
 
-bool UMetaDataStorage_DataTable::ProcessMetadata_Implementation(const FName& RegistryKey, const FInstancedStruct& Payload)
+bool UMetaDataStorage_DataTable::ProcessMetadata_Implementation(const FName& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset)
 {
-    CachedRows.Add(RegistryKey, Payload);
+    FMetaDataRegistryItem& Row = CachedRows.FindOrAdd(RegistryKey);
+    Row.ExtractedTraits.Add(Payload);
+    Row.AssetPath = UnderlyingAsset.ToSoftObjectPath();
+    
     return true; // Added missing return statement
 }

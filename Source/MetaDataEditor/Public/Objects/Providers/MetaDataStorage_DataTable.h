@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Objects/Providers/MetaDataStorageProvider_Base.h"
+#include "Libraries/FMetaDataRegistryItem.h"
 #include "MetaDataStorage_DataTable.generated.h"
 
 /**
@@ -23,7 +24,7 @@ public:
 	 * Passed as a const reference to ensure providers remain stateless.
 	 */
 
-	virtual bool ProcessMetadata_Implementation(const FName& RegistryKey, const FInstancedStruct& Payload) override;
+	virtual bool ProcessMetadata_Implementation(const FName& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset) override;
 
 	/**
 	 * Called after all traits are processed. Used to call MarkPackageDirty(),
@@ -38,6 +39,6 @@ protected:
 	TSoftObjectPtr<UDataTable> TargetDataTable;
 
 	UPROPERTY(VisibleAnywhere)
-	TMap<FName, FInstancedStruct> CachedRows;
+	TMap<FName, FMetaDataRegistryItem> CachedRows;
 
 };

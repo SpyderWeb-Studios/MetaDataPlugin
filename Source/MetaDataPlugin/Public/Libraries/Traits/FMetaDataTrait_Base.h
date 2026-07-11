@@ -14,9 +14,6 @@ USTRUCT(BlueprintType)
 struct FMetaDataTrait_Base
 {
 	GENERATED_BODY()
-
-	UPROPERTY(EditDefaultsOnly, AdvancedDisplay)
-	TSoftObjectPtr<UDataTable> TraitRegistry;
 	
 };
 

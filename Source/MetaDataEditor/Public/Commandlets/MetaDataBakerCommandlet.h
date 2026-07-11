@@ -16,7 +16,7 @@ class METADATAEDITOR_API UMetaDataBakerCommandlet : public UCommandlet
 
 public:
 	virtual int32 Main(const FString& Params) override;
-	void ScanContentForMeshes(TArray<FAssetData>& OutAssetData);
+	void ScanContentForMeshes(const FDirectoryPath& RootFolder, TArray<FAssetData>& OutAssetData);
 	void CommitChanges(TSet<UObject*> ModifiedObjects);
 
 protected:

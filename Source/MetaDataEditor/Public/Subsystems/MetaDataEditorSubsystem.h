@@ -4,7 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "Libraries/AssetIndexer.h"
 #include "MetaDataEditorSubsystem.generated.h"
+
+class UMetaDataStorageProviderInterface;
+
+
 
 /**
  * 
@@ -15,13 +21,18 @@ class METADATAEDITOR_API UMetaDataEditorSubsystem : public UEditorSubsystem
 	GENERATED_BODY()
 	
 public:
+	UMetaDataEditorSubsystem();
+
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	void ExtractAndBakeMetadata(UObject* MeshAsset);
+	void MarkProviderModified(UObject* StorageProvider);
 
-	void GetModifiedMetadataTables(TSet<UDataTable*>& OutTables) const {OutTables = ModifiedTables;}
+	void FlushAllModifiedStorageProviders();
 
+	void IndexAssets(const TArray<FDirectoryPath>& RootFolders);
+	void SerialiseIndexAssets() const;
+	
 protected:
 	
 	TArray<UDataTable*> GetAllMetadataTables();
@@ -31,7 +42,19 @@ protected:
 	
 	void OnAssetDeleted(const FAssetData& AssetData);
 
-	UPROPERTY(BlueprintReadOnly)
-	TSet<UDataTable*> ModifiedTables;
+	UFUNCTION()
+	void StartupIndexing(double Duration);
+	
 
+	
+	UPROPERTY(Transient) // Use Transient so it doesn't serialize the reference itself
+	TSet<TObjectPtr<UObject>> ModifiedStorageProviders;
+
+	FString IndexAssetJSONPath;
+
+	FAssetIndexer IndexedAssets;
+	FCriticalSection IndexingMutex;
+	std::atomic<bool> bIsStopping{false};
+	FProgressNotificationHandle ProgressHandle;
+	TFuture<void> IndexingHandle;
 };

@@ -7,6 +7,8 @@
 #include "Interfaces/MetaDataStorageProviderInterface.h"
 #include "MetaDataStorageProvider_Base.generated.h"
 
+DECLARE_LOG_CATEGORY_EXTERN(LogMetaDataStorageProvider, Log, Log)
+
 /**
  * 
  */
@@ -22,7 +24,7 @@ class METADATAEDITOR_API UMetaDataStorageProvider_Base : public UObject, public 
 	 * Passed as a const reference to ensure providers remain stateless.
 	 */
 	
-	virtual bool ProcessMetadata_Implementation(const FName& RegistryKey, const FInstancedStruct& Payload) override;
+	virtual bool ProcessMetadata_Implementation(const FName& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset) override;
 
 	/**
 	 * Called after all traits are processed. Used to call MarkPackageDirty(),
@@ -30,5 +32,6 @@ class METADATAEDITOR_API UMetaDataStorageProvider_Base : public UObject, public 
 	 */
 	
 	virtual void Flush_Implementation() override;
+
 };
 

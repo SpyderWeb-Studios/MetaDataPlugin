@@ -3,12 +3,14 @@
 
 #include "Objects/Providers/MetaDataStorageProvider_Base.h"
 
+DEFINE_LOG_CATEGORY(LogMetaDataStorageProvider)
+
 bool UMetaDataStorageProvider_Base::ValidateTarget_Implementation(const UScriptStruct* TraitType) const
 {
 	return false;
 }
 
-bool UMetaDataStorageProvider_Base::ProcessMetadata_Implementation(const FName& RegistryKey, const FInstancedStruct& Payload)
+bool UMetaDataStorageProvider_Base::ProcessMetadata_Implementation(const FName& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset)
 {
 	return false;
 }

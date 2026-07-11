@@ -13,4 +13,8 @@ struct FMetaDataRegistryItem : public FTableRowBase
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TArray<TInstancedStruct<FMetaDataTrait_Base>> ExtractedTraits;
+
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	FSoftObjectPath AssetPath;
 };

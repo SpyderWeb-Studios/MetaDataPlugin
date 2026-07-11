@@ -30,6 +30,12 @@ class METADATAEDITOR_API UMetaDataBakingSettingsDataAsset : public UPrimaryDataA
 
 public:
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
+
+	UFUNCTION(BlueprintCallable)
+	UMetaDataNamingConvention* GetNamingConvention() const {return NamingConvention;}
+
+	UFUNCTION(BlueprintCallable)
+	FMetadataProviderArray GetTraitProviders(const UScriptStruct* Struct) const {return TraitRoutingMap.FindRef(Struct);}
 	
 protected:
 	

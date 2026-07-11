@@ -9,6 +9,7 @@
 #include "StructUtils/InstancedStruct.h"
 #include "MetaDataStorageProviderInterface.generated.h"
 
+struct FMetaDataTrait_Base;
 // This class does not need to be modified.
 UINTERFACE(MinimalAPI, BlueprintType)
 class UMetaDataStorageProviderInterface : public UInterface
@@ -33,7 +34,7 @@ public:
 	 * Passed as a const reference to ensure providers remain stateless.
 	 */
 	 UFUNCTION(BlueprintNativeEvent)
-	 bool ProcessMetadata(const FName& RegistryKey, const FInstancedStruct& Payload);
+	 bool ProcessMetadata(const FName& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset);
 
 	/**
 	 * Called after all traits are processed. Used to call MarkPackageDirty(), 
