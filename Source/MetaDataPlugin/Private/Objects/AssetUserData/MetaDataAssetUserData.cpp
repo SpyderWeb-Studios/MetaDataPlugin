@@ -4,6 +4,7 @@
 #include "Objects/AssetUserData/MetaDataAssetUserData.h"
 
 #include "Developer/MetaDataBakingSettings.h"
+#include "UObject/AssetRegistryTagsContext.h"
 
 
 void UMetaDataAssetUserData::ExportTraits_Implementation(TArray<TInstancedStruct<FMetaDataTrait_Base>>& OutTraits,
@@ -46,3 +47,4 @@ bool UMetaDataAssetUserData::IsEditorOnly() const
 	
 	return bEditorOnly;
 }
+

@@ -1,7 +1,7 @@
 ﻿#pragma  once
 
 #include "CoreMinimal.h"
-#include "AssetIndexer.generated.h"
+#include "FAssetIndexer.generated.h"
 
 USTRUCT(BlueprintType)
 struct FAssetIndexer

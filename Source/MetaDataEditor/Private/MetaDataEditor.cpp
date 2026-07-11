@@ -6,7 +6,9 @@
 #include <DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h>
 #include <FunctionLibraries/MetaDataEditorFunctionLibrary.h>
 
+#include "FunctionLibraries/MetaDataBakingFunctionLibrary.h"
 #include "Subsystems/MetaDataEditorSubsystem.h"
+#include "Subsystems/MetaDataIndexerSubsystem.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
 
@@ -51,38 +53,10 @@ void FMetaDataEditor::RegisterMenus()
 	Section.AddEntry(ComboButtonEntry);
 }
 
-void FMetaDataEditor::ReIndexAssets()
-{
-	TArray<FDirectoryPath> DirectoriesToBake;
- 
- 	// A. Add the Base Game explicitly
- 	FDirectoryPath BaseGameDir;
- 	BaseGameDir.Path = TEXT("/Game");
- 	DirectoriesToBake.Add(BaseGameDir);
- 
- 	// B. Dynamically discover all DLCs / Mods
- 	// We only want plugins that actually contain content, ignoring pure-code plugins.
- 	TArray<TSharedRef<IPlugin>> EnabledPlugins = IPluginManager::Get().GetEnabledPluginsWithContent();
- 
- 	for (const TSharedRef<IPlugin>& Plugin : EnabledPlugins)
- 	{
- 		// Optional: If you exclusively want Game Features, you can check Plugin->GetLoadedFrom() 
- 		// or check if its descriptor type is a GameFeature. 
- 
- 		// Get the exact virtual path string (e.g., "/MyModName")
- 		FDirectoryPath PluginDir;
- 		PluginDir.Path = Plugin->GetMountedAssetPath();
- 
- 		DirectoriesToBake.Add(PluginDir);
- 	}
-	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->IndexAssets(DirectoriesToBake);
-	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->SerialiseIndexAssets();
-}
-
 void FMetaDataEditor::PopulateBakeMenu(UToolMenu* Menu)
 {
 	// Create a section inside the dropdown
-	FToolMenuSection& Section = Menu->AddSection("BakeTargets", FText::FromString("Target Scopes"));
+	FToolMenuSection& Section = Menu->FindOrAddSection("BakeTargets", FText::FromString("Target Scopes"));
 
 	// Option 1: Bake Everything
 	Section.AddMenuEntry(
@@ -110,16 +84,22 @@ void FMetaDataEditor::PopulateBakeMenu(UToolMenu* Menu)
 	FUIAction(FExecuteAction::CreateRaw(this, &FMetaDataEditor::OpenBakeDlcPopup))
 	);
 
+	// Create a section inside the dropdown
+	FToolMenuSection& UtilitySection = Menu->FindOrAddSection("Utility", FText::FromString("Utility Functions"));
 
-	FToolMenuSection& UtilitySection = Menu->AddSection("Utility", FText::FromString("Utility"));
-
-	// Option 1 - re-index Assets
 	UtilitySection.AddMenuEntry(
-		"Re-Index Assets",
-		FText::FromString("Re-Index Assets"),
-		FText::FromString("Cleans the internal Indexed Assets and Re-scans the entire project"),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateRaw(this, &FMetaDataEditor::ReIndexAssets))
+		"ReindexProject",
+		FText::FromString("Re-Index Project Assets"),
+		FText::FromString("Forces the Metadata Tracker to wipe the local cache and rescan the project for User Data."),
+		FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Refresh"),
+		FUIAction(FExecuteAction::CreateLambda([]() 
+		{
+			if (UMetaDataIndexerSubsystem* Tracker = GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>())
+			{
+				// Call the function on your Tracker that wipes the JSON and runs the FARFilter
+				Tracker->IndexAssets(true);
+			}
+		}))
 	);
 }
 
@@ -151,29 +131,7 @@ void FMetaDataEditor::ExecuteBakeAll()
 	}
 
 	
-	FNotificationInfo BakingNotification(FText::FromString("Baking Meta Data - Full Project"));
-	BakingNotification.bFireAndForget = false;
-	BakingNotification.bUseThrobber = true;
-	BakingNotification.FadeOutDuration = 1.0f;
-
-	TSharedPtr<SNotificationItem> BakingNotify = FSlateNotificationManager::Get().AddNotification(BakingNotification);
-	BakingNotify->SetCompletionState(SNotificationItem::CS_Pending);
-
-	
-	for (int i = 0; i < DirectoriesToBake.Num(); i++)
-	{
-		const FDirectoryPath& Dir = DirectoriesToBake[i];
-		UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(Dir);
-	}
-
-	if (BakingNotify.IsValid())
-	{
-		BakingNotify->SetCompletionState(SNotificationItem::CS_Success);
-		BakingNotify->SetSubText(FText::FromString("Meta Data Baking Completed"));
-		BakingNotify->ExpireAndFadeout();
-	}
-	
-
+	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->RequestDirectoriesBake(DirectoriesToBake);
 	UE_LOG(LogTemp, Display, TEXT("MetadataBaker: Full Project Bake Complete."));
 }
 
@@ -182,46 +140,15 @@ void FMetaDataEditor::ExecuteBakeBaseGameOnly()
     UE_LOG(LogTemp, Warning, TEXT("Executing Base Game Bake..."));
 	FDirectoryPath BaseGameDir;
 	BaseGameDir.Path = TEXT("/Game");
-
-	FNotificationInfo BakingNotification(FText::FromString("Baking Meta Data - Base Game"));
-	BakingNotification.bFireAndForget = false;
-	BakingNotification.bUseThrobber = true;
-	BakingNotification.FadeOutDuration = 1.0f;
-
-	TSharedPtr<SNotificationItem> BakingNotify = FSlateNotificationManager::Get().AddNotification(BakingNotification);
-	BakingNotify->SetCompletionState(SNotificationItem::CS_Pending);
 	
-	UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(BaseGameDir);
-
-	if (BakingNotify.IsValid())
-	{
-		BakingNotify->SetCompletionState(SNotificationItem::CS_Success);
-		BakingNotify->SetSubText(FText::FromString("Meta Data Baking Completed"));
-		BakingNotify->ExpireAndFadeout();
-	}
+	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->RequestDirectoriesBake({BaseGameDir});
 	
 }
 
 void FMetaDataEditor::ExecuteBakeSpecificDLC(FName TargetFolder)
 {
     UE_LOG(LogTemp, Warning, TEXT("Executing Mod Bake for: %s"), *TargetFolder.ToString());
-
-	FNotificationInfo BakingNotification(FText::FromString("Baking Meta Data - DLC - " + TargetFolder.ToString()));
-	BakingNotification.bFireAndForget = false;
-	BakingNotification.bUseThrobber = true;
-	BakingNotification.FadeOutDuration = 1.0f;
-	
-	TSharedPtr<SNotificationItem> BakingNotify = FSlateNotificationManager::Get().AddNotification(BakingNotification);
-	BakingNotify->SetCompletionState(SNotificationItem::CS_Pending);
-	
-	UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(FDirectoryPath(TargetFolder.ToString()));
-	
-	if (BakingNotify.IsValid())
-	{
-		BakingNotify->SetCompletionState(SNotificationItem::CS_Success);
-		BakingNotify->SetSubText(FText::FromString("Meta Data Baking Completed"));
-		BakingNotify->ExpireAndFadeout();
-	}
+	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->RequestDirectoriesBake({FDirectoryPath(TargetFolder.ToString())});
 }
 
 

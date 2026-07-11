@@ -6,6 +6,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Subsystems/MetaDataEditorSubsystem.h"
 #include "FileHelpers.h" // Essential for SavePackage
+#include "FunctionLibraries/MetaDataBakingFunctionLibrary.h"
 #include "FunctionLibraries/MetaDataEditorFunctionLibrary.h"
 #include "UObject/SavePackage.h"
 
@@ -53,7 +54,7 @@ int32 UMetaDataBakerCommandlet::Main(const FString& Params)
         
         if (LoadedAsset)
         {
-            UMetaDataEditorFunctionLibrary::BakeMetadataForAsset(LoadedAsset);
+            UMetaDataBakingFunctionLibrary::BakeMetadataForAsset(LoadedAsset);
         }
 
         // 3. Periodic Garbage Collection
@@ -80,7 +81,7 @@ int32 UMetaDataBakerCommandlet::Main(const FString& Params)
 
 void UMetaDataBakerCommandlet::ScanContentForMeshes(const FDirectoryPath& RootFolder, TArray<FAssetData>& OutAssetData)
 {
-    UE_LOG(LogMetaDataBakerEditor, Log, TEXT("Scanning Content in [%s]"), *RootFolder.Path);
+    UE_LOG(LogTemp, Log, TEXT("Scanning Content in [%s]"), *RootFolder.Path);
     UMetaDataEditorFunctionLibrary::FindAssetUserDataOwners(RootFolder, OutAssetData);
 }
 
