@@ -16,5 +16,11 @@ public:
     
 	// Generates a deterministic, stable Registry ID based on the asset's path and context.
 	UFUNCTION(BlueprintNativeEvent, Category = "Metadata Baking")
-	FName GenerateRegistryKey(const FSoftObjectPath& AssetPath, const FString& ContextNamespace) const;
+	FName GenerateRegistryKey(const FSoftObjectPath& AssetPath) const;
+
+protected:
+
+	UPROPERTY(EditDefaultsOnly)
+	FString ContextNamespace;
+	
 };

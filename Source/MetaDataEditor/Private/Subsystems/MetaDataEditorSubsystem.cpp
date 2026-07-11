@@ -3,16 +3,30 @@
 
 #include "Subsystems/MetaDataEditorSubsystem.h"
 #include "InstancedStruct.h"
+#include "JsonObjectConverter.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "FunctionLibraries/MetaDataEditorFunctionLibrary.h"
+#include "Interfaces/IPluginManager.h"
 #include "UObject/ObjectSaveContext.h"
 
-#include "Interfaces/MetaDataExportInterface.h"
 #include "Libraries/FMetaDataRegistryItem.h"
+#include "Widgets/Notifications/SNotificationList.h"
 
+
+UMetaDataEditorSubsystem::UMetaDataEditorSubsystem()
+{
+    IndexAssetJSONPath = FPaths::ProjectSavedDir() + TEXT("MetadataBaker/AssetIndex.json");
+}
 
 void UMetaDataEditorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
+
+    if (GEditor)
+    {
+        FEditorDelegates::OnEditorInitialized.AddUObject(this, &UMetaDataEditorSubsystem::StartupIndexing);
+    }
 
     // Bind to the asset deletion event
     FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -31,8 +45,39 @@ void UMetaDataEditorSubsystem::Deinitialize()
     }
 
     UPackage::PreSavePackageWithContextEvent.RemoveAll(this);
+
+    bIsStopping = true;
+    SerialiseIndexAssets();
     
     Super::Deinitialize();
+}
+
+void UMetaDataEditorSubsystem::MarkProviderModified(UObject* StorageProviderInterface)
+{
+    ModifiedStorageProviders.Add(StorageProviderInterface);
+}
+
+void UMetaDataEditorSubsystem::FlushAllModifiedStorageProviders()
+{
+    for (UObject* ProviderObj : ModifiedStorageProviders)
+    {
+        if (!IsValid(ProviderObj))
+        {
+            UE_LOG(LogMetaDataBakerEditor, Warning, TEXT("Modified Provider [%s] is not valid"), *GetNameSafe(ProviderObj));
+            continue;
+        }
+
+        if(!ProviderObj->Implements<UMetaDataStorageProviderInterface>())
+        {
+            UE_LOG(LogMetaDataBakerEditor, Warning, TEXT("Modified Provider [%s] does not implement IMetaDataStorageProviderInterface"), *GetNameSafe(ProviderObj));
+            continue;
+        }
+        
+        IMetaDataStorageProviderInterface::Execute_Flush(ProviderObj);
+    }
+    
+    // Clear the set after processing
+    ModifiedStorageProviders.Empty();
 }
 
 void UMetaDataEditorSubsystem::OnAssetDeleted(const FAssetData& AssetData)
@@ -49,6 +94,206 @@ void UMetaDataEditorSubsystem::OnAssetDeleted(const FAssetData& AssetData)
             Table->RemoveRow(RowNameToRemove);
             Table->MarkPackageDirty();
             UE_LOG(LogTemp, Display, TEXT("Asset Deleted: Cleaned up row [%s] from [%s]"), *RowNameToRemove.ToString(), *Table->GetName());
+        }
+    }
+}
+
+void UMetaDataEditorSubsystem::StartupIndexing(double Duration)
+{
+    // Indexer
+    FString Assets_JSON;
+    FFileHelper::LoadFileToString(Assets_JSON, *IndexAssetJSONPath);
+    TSharedPtr<FJsonObject> Assets_JsonObject = MakeShareable(new FJsonObject());
+    TSharedRef<TJsonReader<>> JsonReader = TJsonReaderFactory<>::Create(Assets_JSON);
+
+    if (FJsonSerializer::Deserialize(JsonReader, Assets_JsonObject) && Assets_JsonObject.IsValid())
+    {
+        // 1. Get the array from the JSON
+        const TArray<TSharedPtr<FJsonValue>>* JsonArray;
+        if (Assets_JsonObject->TryGetArrayField(TEXT("IndexedAssets"), JsonArray))
+        {
+            IndexedAssets.IndexedAssets.Empty(); // Clear existing
+            
+            for (const TSharedPtr<FJsonValue>& Value : *JsonArray)
+            {
+                FString AssetPath;
+                if (Value->TryGetString(AssetPath))
+                {
+                    FSoftObjectPath ObjectPath(AssetPath);
+                    IndexedAssets.IndexedAssets.Add(ObjectPath);
+                }
+            }
+            UE_LOG(LogTemp, Log, TEXT("Deserialized %d assets into IndexedAssets."), IndexedAssets.IndexedAssets.Num());
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Couldn't deserialize AssetIndex.json, performing scan in background"));
+
+        TArray<FDirectoryPath> DirectoriesToBake;
+
+        // A. Add the Base Game explicitly
+        FDirectoryPath BaseGameDir;
+        BaseGameDir.Path = TEXT("/Game");
+        DirectoriesToBake.Add(BaseGameDir);
+
+        // We only want plugins that actually contain content, ignoring pure-code plugins.
+        TArray<TSharedRef<IPlugin>> EnabledPlugins = IPluginManager::Get().GetEnabledPluginsWithContent();
+
+        for (const TSharedRef<IPlugin>& Plugin : EnabledPlugins)
+        {
+            FDirectoryPath PluginDir;
+            PluginDir.Path = Plugin->GetMountedAssetPath();
+
+            DirectoriesToBake.Add(PluginDir);
+        }
+
+        GEditor->GetTimerManager()->SetTimerForNextTick([this, DirectoriesToBake]
+        {
+            IndexAssets(DirectoriesToBake);        
+        });
+        
+    }
+}
+
+void UMetaDataEditorSubsystem::IndexAssets(const TArray<FDirectoryPath>& RootFolders)
+{
+    IndexedAssets.IndexedAssets.Empty();
+    
+    if (RootFolders.IsEmpty())
+    {
+        UE_LOG(LogTemp, Error, TEXT("MetadataBaker: Aborting Index. RootFolders array is empty."));
+        return;
+    }
+
+    if (IndexingHandle.IsValid() && !IndexingHandle.IsReady())
+    {
+        bIsStopping = true;
+        IndexingHandle.Wait(); // Wait for the active thread to exit safely
+    }
+    
+    FSlateNotificationManager::Get().CancelProgressNotification(ProgressHandle);
+
+    bIsStopping = false;
+
+    
+    ProgressHandle.Reset();
+    ProgressHandle = FSlateNotificationManager::Get().StartProgressNotification(
+        FText::FromString("Meta Data - Indexing Assets"),
+        RootFolders.Num()
+    );
+
+    UE_LOG(LogMetaDataBakerEditor, Log, TEXT("MetadataBaker: Indexing Assets from [%d]"), RootFolders.Num());
+
+    
+    IndexingHandle = Async(EAsyncExecution::ThreadPool, [this, RootFolders]()
+    {
+        
+        int32 TotalFolders = RootFolders.Num();
+        UE_LOG(LogTemp, Warning, TEXT("MetadataBaker: Background Thread Started successfully."));
+
+        for (int i = 0; i < RootFolders.Num(); i++)
+        {
+            
+            if (bIsStopping) return; // Immediate exit if Subsystem is shutting down
+            
+            const FDirectoryPath& Folder = RootFolders[i];
+            TArray<FAssetData> FoundAssets;
+
+            UE_LOG(LogTemp, Warning, TEXT("MetadataBaker: Dispatching to Game Thread for Folder: %s"), *Folder.Path);
+            // Dispatch to the Game Thread and wait for completion
+            FGraphEventRef Task = FFunctionGraphTask::CreateAndDispatchWhenReady([&]()
+            {
+                UE_LOG(LogTemp, Warning, TEXT("MetadataBaker: Game Thread Executing Registry Scan."));
+                TArray<FAssetData> Assets;
+                UMetaDataEditorFunctionLibrary::FindAssetUserDataOwners(Folder, Assets);
+
+                for (const FAssetData& AssetData : Assets)
+                {
+                    
+                    const IInterface_AssetUserData* AssetUserDataObject = Cast<IInterface_AssetUserData>(AssetData.GetAsset());
+                    if(!AssetUserDataObject)
+                    {
+                        UE_LOG(LogMetaDataBakerEditor, Verbose, TEXT("Asset [%s] cannot be indexed - Does not Implement Asset User Data Interface"), *AssetData.GetObjectPathString());
+                        continue;
+                    }
+
+                   const TArray<UAssetUserData*>* AssetUserDataArray = AssetUserDataObject->GetAssetUserDataArray();
+                    if(!AssetUserDataArray)
+                    {
+                        UE_LOG(LogMetaDataBakerEditor, Verbose, TEXT("Asset [%s] cannot be indexed - Asset User Data Array is Invalid"), *AssetData.GetObjectPathString());
+                        continue;
+                    }
+
+                    if(AssetUserDataArray->Num() == 0)
+                    {
+                        UE_LOG(LogMetaDataBakerEditor, Verbose, TEXT("Asset [%s] cannot be indexed - Asset User Data Array is Empty"), *AssetData.GetObjectPathString());
+                        continue;
+                    }
+
+                    FoundAssets.Add(AssetData);
+                }
+                
+            },
+            TStatId(), nullptr, ENamedThreads::GameThread);
+        
+            // Block this background thread until the Game Thread finishes scanning
+            Task->Wait();
+            
+            UE_LOG(LogTemp, Warning, TEXT("MetadataBaker: Game Thread Finished. Found %d assets."), FoundAssets.Num());
+        
+            // Process data on the Background Thread safely
+            for (const FAssetData& AssetData : FoundAssets)
+            {                
+                if (bIsStopping) return; // Immediate exit if Subsystem is shutting down
+                
+                // Lock the mutex before writing to the shared array
+                FScopeLock Lock(&IndexingMutex);
+                IndexedAssets.IndexedAssets.Add(AssetData.GetSoftObjectPath());
+                UE_LOG(LogTemp, VeryVerbose, TEXT("MetadataBaker: Adding [%s] to Index"), *AssetData.GetSoftObjectPath().ToString());
+            }
+
+            FPlatformProcess::Sleep(0.5f);
+            
+            // Update progress bar on Game Thread (Fire and forget is safe here)
+            AsyncTask(ENamedThreads::GameThread, [this, i, TotalFolders]() {
+                if (ProgressHandle.IsValid())
+                {
+                    FSlateNotificationManager::Get().UpdateProgressNotification(ProgressHandle, i + 1);
+                }
+            });
+        }
+
+        // 3. Finalization (Game Thread)
+        AsyncTask(ENamedThreads::GameThread, [this]() {
+            if (ProgressHandle.IsValid())
+            {
+                FSlateNotificationManager::Get().CancelProgressNotification(ProgressHandle);
+
+
+                FNotificationInfo Completion(FText::FromString("Meta Data Indexing Complete"));
+                Completion.ExpireDuration = 2.0f;
+                Completion.bFireAndForget = true;
+                FSlateNotificationManager::Get().AddNotification(Completion);
+            }
+        });
+        
+    });
+
+}
+
+void UMetaDataEditorSubsystem::SerialiseIndexAssets() const
+{
+    // Serialise IndexedAssets
+    FString JsonString;
+    UE_LOG(LogMetaDataBakerEditor, Display, TEXT("Serialising Indexed Assets JSON"));
+    if (FJsonObjectConverter::UStructToJsonObjectString(IndexedAssets, JsonString))
+    {
+    
+        UE_LOG(LogMetaDataBakerEditor, Display, TEXT("Indexed Assets JSON string"));
+        if (FFileHelper::SaveStringToFile(JsonString, *IndexAssetJSONPath))
+        {
+            UE_LOG(LogTemp, Log, TEXT("JSON Struct saved successfully to %s"), *IndexAssetJSONPath);
         }
     }
 }
@@ -97,96 +342,9 @@ void UMetaDataEditorSubsystem::OnPreSavePackage(UPackage* Package, FObjectPreSav
         // 1. Check if the object is either a Static Mesh or a Skeletal Mesh
         if (Obj->IsA<UStaticMesh>() || Obj->IsA<USkeletalMesh>())
         {
-            ExtractAndBakeMetadata(Obj);
-        }
-    }
-}
-
-void UMetaDataEditorSubsystem::ExtractAndBakeMetadata(UObject* MeshAsset)
-{
-    if (!MeshAsset) return;
-
-    // 1. Safely retrieve the AssetUserData array based on the mesh type
-    const TArray<UAssetUserData*>* UserDataArray = nullptr;
-
-    if (UStaticMesh* StaticMesh = Cast<UStaticMesh>(MeshAsset))
-    {
-        UserDataArray = StaticMesh->GetAssetUserDataArray();
-    }
-    else if (USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(MeshAsset))
-    {
-        UserDataArray = SkeletalMesh->GetAssetUserDataArray();
-    }
-
-    // If it's neither, or doesn't have an array, bail out early
-    if (!UserDataArray) return;
-
-    UE_LOG(LogTemp, Display, TEXT("Extracting data from [%s]"), *GetNameSafe(MeshAsset));
-    TArray<TInstancedStruct<FMetaDataTrait_Base>> SourceTraits;
-    
-    // Extract meta data from user asset data
-    for (UAssetUserData* UserData : *UserDataArray)
-    {
-        if (UserData && UserData->Implements<UMetaDataExportInterface>())
-        {
-            IMetaDataExportInterface::Execute_ExportTraits(UserData, SourceTraits, false);
+            UMetaDataEditorFunctionLibrary::BakeMetadataForAsset(Obj);
         }
     }
 
-    UE_LOG(LogTemp, Display, TEXT("Found [%d] Traits to add to data registry"), SourceTraits.Num());
-
-    // 1. Group the extracted traits by their target TraitRegistry
-    TMap<UDataTable*, TArray<TInstancedStruct<FMetaDataTrait_Base>>> TraitsByRegistry;
-
-    for (const TInstancedStruct<FMetaDataTrait_Base>& Trait : SourceTraits)
-    {
-        if (Trait.IsValid())
-        {
-            TSoftObjectPtr<UDataTable> TargetRegistry = Trait.Get<FMetaDataTrait_Base>().TraitRegistry;
-            if (UDataTable* LoadedTable = TargetRegistry.LoadSynchronous())
-            {
-                TraitsByRegistry.FindOrAdd(LoadedTable).Add(Trait);
-            }
-        }
-    }
-
-    const FName RowName = FName(*MeshAsset->GetPathName());
-
-    // 2. Dynamically find ALL metadata tables in the project
-    TArray<UDataTable*> AllMetaTables = GetAllMetadataTables();
-
-    // 3. Iterate through EVERY table to either update it or clean it up
-    for (UDataTable* RegistryTable : AllMetaTables)
-    {
-        // Does this table have new traits incoming for this mesh?
-        if (TArray<TInstancedStruct<FMetaDataTrait_Base>>* IncomingTraits = TraitsByRegistry.Find(RegistryTable))
-        {
-            // Update the row (Trait exists or was added)
-            FMetaDataRegistryItem NewRow;
-            if (FMetaDataRegistryItem* ExistingRow = RegistryTable->FindRow<FMetaDataRegistryItem>(RowName, TEXT("Updating Row")))
-            {
-                NewRow = *ExistingRow;
-            }
-            
-            NewRow.ExtractedTraits.Empty(); 
-            NewRow.ExtractedTraits.Append(*IncomingTraits);
-            
-            RegistryTable->AddRow(RowName, NewRow);
-            RegistryTable->MarkPackageDirty();
-            ModifiedTables.Add(RegistryTable);
-        }
-        else
-        {
-            // NO incoming traits for this table. 
-            // If the row exists, it means the trait was removed by the user!
-            if (RegistryTable->GetRowMap().Contains(RowName))
-            {
-                RegistryTable->RemoveRow(RowName);
-                RegistryTable->MarkPackageDirty();
-                ModifiedTables.Add(RegistryTable);
-                UE_LOG(LogTemp, Warning, TEXT("Removed stale row [%s] from [%s] because the trait was removed."), *RowName.ToString(), *RegistryTable->GetName());
-            }
-        }
-    }
-
+    FlushAllModifiedStorageProviders();
 }

@@ -6,6 +6,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Subsystems/MetaDataEditorSubsystem.h"
 #include "FileHelpers.h" // Essential for SavePackage
+#include "FunctionLibraries/MetaDataEditorFunctionLibrary.h"
 #include "UObject/SavePackage.h"
 
 
@@ -21,14 +22,24 @@ int32 UMetaDataBakerCommandlet::Main(const FString& Params)
     UE_LOG(LogTemp, Display, TEXT("--------------------------------------"));
     UE_LOG(LogTemp, Display, TEXT(""));
 
-    // --- Start Logic ---
-    UE_LOG(LogTemp, Display, TEXT("   Scanning for metadata interface implementations..."));
 
     UMetaDataEditorSubsystem* MetaDataSubsystem = GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>();
-    if(!IsValid(MetaDataSubsystem)) return 1;
+    if(!IsValid(MetaDataSubsystem)) return -1;
 
     TArray<FAssetData> RelevantContent;
-    ScanContentForMeshes(RelevantContent);
+    
+    FString AssetRoot;
+    // FParse::Value will populate AssetRoot with the string following "-AssetRoot="
+    // Note: It looks for the key including the equals sign in the text argument.
+    if (FParse::Value(*Params, TEXT("AssetRoot="), AssetRoot))
+    {
+        ScanContentForMeshes(FDirectoryPath(AssetRoot), RelevantContent);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("MetadataBaker: Missing required argument: -AssetRoot (eg. /Game/ )"));
+        return -1; // Fail gracefully if no path is provided
+    }
     
     UE_LOG(LogTemp, Display, TEXT("Found %d meshes to process."), RelevantContent.Num());
 
@@ -42,8 +53,7 @@ int32 UMetaDataBakerCommandlet::Main(const FString& Params)
         
         if (LoadedAsset)
         {
-            // 2. Delegate the processing to your Subsystem
-            MetaDataSubsystem->ExtractAndBakeMetadata(LoadedAsset);
+            UMetaDataEditorFunctionLibrary::BakeMetadataForAsset(LoadedAsset);
         }
 
         // 3. Periodic Garbage Collection
@@ -51,7 +61,7 @@ int32 UMetaDataBakerCommandlet::Main(const FString& Params)
         {
             UE_LOG(LogTemp, Display, TEXT("Batch processing: %d / %d. Running GC..."), Count, RelevantContent.Num());
             
-            // This clears out objects that are no longer referenced after ExtractAndBakeMetadata
+            // This clears out objects that are no longer referenced after BakeMetadataForAsset
             CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
         }
     }
@@ -62,33 +72,16 @@ int32 UMetaDataBakerCommandlet::Main(const FString& Params)
     UE_LOG(LogTemp, Display, TEXT("=============================================="));
     UE_LOG(LogTemp, Display, TEXT("   TRAIT BATCHING COMPLETE. SAVING PACKAGES   "));
     UE_LOG(LogTemp, Display, TEXT("=============================================="));
-
-    TSet<UDataTable*> ModifiedTables;
-    MetaDataSubsystem->GetModifiedMetadataTables(ModifiedTables);
-
-    TSet<UObject*> ModifiedObjects;
-    for(UDataTable* Table : ModifiedTables)
-    {
-        ModifiedObjects.Add(Table);
-    }
     
-    CommitChanges(ModifiedObjects);
     
     return 0;
     
 }
 
-void UMetaDataBakerCommandlet::ScanContentForMeshes(TArray<FAssetData>& OutAssetData)
+void UMetaDataBakerCommandlet::ScanContentForMeshes(const FDirectoryPath& RootFolder, TArray<FAssetData>& OutAssetData)
 {
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-    
-    FARFilter Filter;
-    // Add both types to the filter
-    Filter.ClassPaths.Add(UStaticMesh::StaticClass()->GetClassPathName());
-    Filter.ClassPaths.Add(USkeletalMesh::StaticClass()->GetClassPathName());
-    Filter.bRecursivePaths = true;
-
-    AssetRegistryModule.Get().GetAssets(Filter, OutAssetData);
+    UE_LOG(LogMetaDataBakerEditor, Log, TEXT("Scanning Content in [%s]"), *RootFolder.Path);
+    UMetaDataEditorFunctionLibrary::FindAssetUserDataOwners(RootFolder, OutAssetData);
 }
 
 

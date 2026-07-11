@@ -14,6 +14,9 @@ class FMetaDataEditor : public IModuleInterface
 	/* Called when the module is unloaded */
 	virtual void ShutdownModule() override;
 	void RegisterMenus();
+
+	
+	void ReIndexAssets();
 	void PopulateBakeMenu(UToolMenu* Menu);
 	void ExecuteBakeAll();
 	void ExecuteBakeBaseGameOnly();

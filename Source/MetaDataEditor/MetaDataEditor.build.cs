@@ -19,7 +19,8 @@ public class MetaDataEditor : ModuleRules
 			"GameplayTags",      // Required for FGameplayTagQuery
             "EditorSubsystem",    // Required for the EditorSubsystem,
             "ToolMenus",
-            "Projects"
+            "Projects",
+            "JSON", "JsonUtilities"
 		});
 		
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;

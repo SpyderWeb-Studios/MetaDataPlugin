@@ -30,7 +30,8 @@ public class MetaDataPlugin : ModuleRules
 				"Engine",
 				"StructUtils",   // Required for FInstancedStruct
 				"DataRegistry",  // Required for FDataRegistryId
-				"GameplayTags"   // Required for FGameplayTagQuery
+				"GameplayTags",   // Required for FGameplayTagQuery,
+				"DeveloperSettings",
 			}
 		);
 		

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Objects/MetaDataNamingConvention.h"
+#include <Objects/Providers/MetaDataStorageProvider_Base.h>
 #include "MetaDataBakingSettingsDataAsset.generated.h"
 
 #pragma once
@@ -13,6 +14,9 @@ USTRUCT(BlueprintType)
 struct FMetadataProviderArray
 {
 	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, Instanced)
+	TArray<UMetaDataStorageProvider_Base*> ProviderArray;
 
 };
 
@@ -26,6 +30,12 @@ class METADATAEDITOR_API UMetaDataBakingSettingsDataAsset : public UPrimaryDataA
 
 public:
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
+
+	UFUNCTION(BlueprintCallable)
+	UMetaDataNamingConvention* GetNamingConvention() const {return NamingConvention;}
+
+	UFUNCTION(BlueprintCallable)
+	FMetadataProviderArray GetTraitProviders(const UScriptStruct* Struct) const {return TraitRoutingMap.FindRef(Struct);}
 	
 protected:
 	

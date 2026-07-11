@@ -3,6 +3,11 @@
 #include "MetaDataEditor/Public/MetaDataEditor.h"
 #include "ToolMenus.h"
 #include "Interfaces/IPluginManager.h"
+#include <DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h>
+#include <FunctionLibraries/MetaDataEditorFunctionLibrary.h>
+
+#include "Subsystems/MetaDataEditorSubsystem.h"
+#include "Widgets/Notifications/SNotificationList.h"
 
 
 DEFINE_LOG_CATEGORY(MetaDataEditor);
@@ -46,6 +51,34 @@ void FMetaDataEditor::RegisterMenus()
 	Section.AddEntry(ComboButtonEntry);
 }
 
+void FMetaDataEditor::ReIndexAssets()
+{
+	TArray<FDirectoryPath> DirectoriesToBake;
+ 
+ 	// A. Add the Base Game explicitly
+ 	FDirectoryPath BaseGameDir;
+ 	BaseGameDir.Path = TEXT("/Game");
+ 	DirectoriesToBake.Add(BaseGameDir);
+ 
+ 	// B. Dynamically discover all DLCs / Mods
+ 	// We only want plugins that actually contain content, ignoring pure-code plugins.
+ 	TArray<TSharedRef<IPlugin>> EnabledPlugins = IPluginManager::Get().GetEnabledPluginsWithContent();
+ 
+ 	for (const TSharedRef<IPlugin>& Plugin : EnabledPlugins)
+ 	{
+ 		// Optional: If you exclusively want Game Features, you can check Plugin->GetLoadedFrom() 
+ 		// or check if its descriptor type is a GameFeature. 
+ 
+ 		// Get the exact virtual path string (e.g., "/MyModName")
+ 		FDirectoryPath PluginDir;
+ 		PluginDir.Path = Plugin->GetMountedAssetPath();
+ 
+ 		DirectoriesToBake.Add(PluginDir);
+ 	}
+	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->IndexAssets(DirectoriesToBake);
+	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->SerialiseIndexAssets();
+}
+
 void FMetaDataEditor::PopulateBakeMenu(UToolMenu* Menu)
 {
 	// Create a section inside the dropdown
@@ -75,23 +108,120 @@ void FMetaDataEditor::PopulateBakeMenu(UToolMenu* Menu)
 	FText::FromString("Opens a window to select a specific active DLC or Mod module to bake."),
 	FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Filter"),
 	FUIAction(FExecuteAction::CreateRaw(this, &FMetaDataEditor::OpenBakeDlcPopup))
-);
+	);
+
+
+	FToolMenuSection& UtilitySection = Menu->AddSection("Utility", FText::FromString("Utility"));
+
+	// Option 1 - re-index Assets
+	UtilitySection.AddMenuEntry(
+		"Re-Index Assets",
+		FText::FromString("Re-Index Assets"),
+		FText::FromString("Cleans the internal Indexed Assets and Re-scans the entire project"),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateRaw(this, &FMetaDataEditor::ReIndexAssets))
+	);
 }
 
 void FMetaDataEditor::ExecuteBakeAll()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Executing Full Project Bake..."));
-    // Call your Commandlet/Subsystem logic here
+	UE_LOG(LogTemp, Display, TEXT("MetadataBaker: Executing Full Project Bake..."));
+
+	TArray<FDirectoryPath> DirectoriesToBake;
+
+	// A. Add the Base Game explicitly
+	FDirectoryPath BaseGameDir;
+	BaseGameDir.Path = TEXT("/Game");
+	DirectoriesToBake.Add(BaseGameDir);
+
+	// B. Dynamically discover all DLCs / Mods
+	// We only want plugins that actually contain content, ignoring pure-code plugins.
+	TArray<TSharedRef<IPlugin>> EnabledPlugins = IPluginManager::Get().GetEnabledPluginsWithContent();
+
+	for (const TSharedRef<IPlugin>& Plugin : EnabledPlugins)
+	{
+		// Optional: If you exclusively want Game Features, you can check Plugin->GetLoadedFrom() 
+		// or check if its descriptor type is a GameFeature. 
+
+		// Get the exact virtual path string (e.g., "/MyModName")
+		FDirectoryPath PluginDir;
+		PluginDir.Path = Plugin->GetMountedAssetPath();
+
+		DirectoriesToBake.Add(PluginDir);
+	}
+
+	
+	FNotificationInfo BakingNotification(FText::FromString("Baking Meta Data - Full Project"));
+	BakingNotification.bFireAndForget = false;
+	BakingNotification.bUseThrobber = true;
+	BakingNotification.FadeOutDuration = 1.0f;
+
+	TSharedPtr<SNotificationItem> BakingNotify = FSlateNotificationManager::Get().AddNotification(BakingNotification);
+	BakingNotify->SetCompletionState(SNotificationItem::CS_Pending);
+
+	
+	for (int i = 0; i < DirectoriesToBake.Num(); i++)
+	{
+		const FDirectoryPath& Dir = DirectoriesToBake[i];
+		UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(Dir);
+	}
+
+	if (BakingNotify.IsValid())
+	{
+		BakingNotify->SetCompletionState(SNotificationItem::CS_Success);
+		BakingNotify->SetSubText(FText::FromString("Meta Data Baking Completed"));
+		BakingNotify->ExpireAndFadeout();
+	}
+	
+
+	UE_LOG(LogTemp, Display, TEXT("MetadataBaker: Full Project Bake Complete."));
 }
 
 void FMetaDataEditor::ExecuteBakeBaseGameOnly()
 {
     UE_LOG(LogTemp, Warning, TEXT("Executing Base Game Bake..."));
+	FDirectoryPath BaseGameDir;
+	BaseGameDir.Path = TEXT("/Game");
+
+	FNotificationInfo BakingNotification(FText::FromString("Baking Meta Data - Base Game"));
+	BakingNotification.bFireAndForget = false;
+	BakingNotification.bUseThrobber = true;
+	BakingNotification.FadeOutDuration = 1.0f;
+
+	TSharedPtr<SNotificationItem> BakingNotify = FSlateNotificationManager::Get().AddNotification(BakingNotification);
+	BakingNotify->SetCompletionState(SNotificationItem::CS_Pending);
+	
+	UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(BaseGameDir);
+
+	if (BakingNotify.IsValid())
+	{
+		BakingNotify->SetCompletionState(SNotificationItem::CS_Success);
+		BakingNotify->SetSubText(FText::FromString("Meta Data Baking Completed"));
+		BakingNotify->ExpireAndFadeout();
+	}
+	
 }
 
 void FMetaDataEditor::ExecuteBakeSpecificDLC(FName TargetFolder)
 {
     UE_LOG(LogTemp, Warning, TEXT("Executing Mod Bake for: %s"), *TargetFolder.ToString());
+
+	FNotificationInfo BakingNotification(FText::FromString("Baking Meta Data - DLC - " + TargetFolder.ToString()));
+	BakingNotification.bFireAndForget = false;
+	BakingNotification.bUseThrobber = true;
+	BakingNotification.FadeOutDuration = 1.0f;
+	
+	TSharedPtr<SNotificationItem> BakingNotify = FSlateNotificationManager::Get().AddNotification(BakingNotification);
+	BakingNotify->SetCompletionState(SNotificationItem::CS_Pending);
+	
+	UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(FDirectoryPath(TargetFolder.ToString()));
+	
+	if (BakingNotify.IsValid())
+	{
+		BakingNotify->SetCompletionState(SNotificationItem::CS_Success);
+		BakingNotify->SetSubText(FText::FromString("Meta Data Baking Completed"));
+		BakingNotify->ExpireAndFadeout();
+	}
 }
 
 
