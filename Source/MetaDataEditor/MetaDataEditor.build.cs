@@ -1,12 +1,19 @@
 using UnrealBuildTool;
  
+/*
+ *
+ * This module is the core editor functionality 
+ *
+ */
+
 public class MetaDataEditor : ModuleRules
 {
 	public MetaDataEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "UnrealEd",
 			"Slate",
-			"SlateCore",});
+			"SlateCore", "MetaDataEditorCore", "MetaDataIndexingModule"
+		});
 		
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
@@ -20,7 +27,6 @@ public class MetaDataEditor : ModuleRules
             "EditorSubsystem",    // Required for the EditorSubsystem,
             "ToolMenus",
             "Projects",
-            "JSON", "JsonUtilities"
 		});
 		
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;

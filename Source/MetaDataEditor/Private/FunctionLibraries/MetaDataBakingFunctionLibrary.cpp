@@ -1,16 +1,17 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
+#include "FunctionLibraries/MetaDataBakingFunctionLibrary.h"
+
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h"
 #include "FunctionLibraries/MetaDataEditorFunctionLibrary.h"
-#include <AssetRegistry/AssetRegistryModule.h>
-
 #include "Interfaces/MetaDataExportInterface.h"
 #include "Subsystems/MetaDataEditorSubsystem.h"
 
-DEFINE_LOG_CATEGORY(LogMetaDataBakerEditor)
+DEFINE_LOG_CATEGORY(LogMetaDataBakingLibrary)
 
-
-bool UMetaDataEditorFunctionLibrary::ScanForBakingSettings(const FDirectoryPath& RootFolder, TMap<UMetaDataBakingSettingsDataAsset*, FName>& OutBakingSettings)
+bool UMetaDataBakingFunctionLibrary::ScanForBakingSettings(const FDirectoryPath& RootFolder, TMap<UMetaDataBakingSettingsDataAsset*, FName>& OutBakingSettings)
 {
     OutBakingSettings.Empty();
 
@@ -21,7 +22,7 @@ bool UMetaDataEditorFunctionLibrary::ScanForBakingSettings(const FDirectoryPath&
         SanitizedPath.RemoveFromEnd(TEXT("/"));
     }
 
-    UE_LOG(LogMetaDataBakerEditor, Display, TEXT("MetadataBaker: Scanning recursively for settings in path: %s"), *SanitizedPath);
+    UE_LOG(LogMetaDataBakingLibrary, Display, TEXT("MetadataBaker: Scanning recursively for settings in path: %s"), *SanitizedPath);
 
     // 2. Get the Asset Registry
     FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -39,7 +40,7 @@ bool UMetaDataEditorFunctionLibrary::ScanForBakingSettings(const FDirectoryPath&
 
     if (AssetList.IsEmpty())
     {
-        UE_LOG(LogMetaDataBakerEditor, Warning, TEXT("MetadataBaker: No UMetaDataBakingSettingsDataAsset found in %s or its subfolders. Ensure they are created and saved."), *SanitizedPath);
+        UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetadataBaker: No UMetaDataBakingSettingsDataAsset found in %s or its subfolders. Ensure they are created and saved."), *SanitizedPath);
         return false;
     }
 
@@ -53,7 +54,7 @@ bool UMetaDataEditorFunctionLibrary::ScanForBakingSettings(const FDirectoryPath&
         // Fail Fast: Check for Duplicates IN THE SAME FOLDER
         if (ProcessedFolders.Contains(FolderPath))
         {
-            UE_LOG(LogMetaDataBakerEditor, Error, TEXT("MetadataBaker: ABORTING BAKE. Found multiple Settings Assets in the same directory: %s. Only ONE Settings Asset is allowed per folder to prevent routing conflicts."), *FolderPath.ToString());
+            UE_LOG(LogMetaDataBakingLibrary, Error, TEXT("MetadataBaker: ABORTING BAKE. Found multiple Settings Assets in the same directory: %s. Only ONE Settings Asset is allowed per folder to prevent routing conflicts."), *FolderPath.ToString());
             return false;
         }
 
@@ -63,27 +64,27 @@ bool UMetaDataEditorFunctionLibrary::ScanForBakingSettings(const FDirectoryPath&
             OutBakingSettings.Add(LoadedAsset, FolderPath);
             ProcessedFolders.Add(FolderPath);
 
-            UE_LOG(LogMetaDataBakerEditor, Display, TEXT("MetadataBaker: Discovered Settings Asset for folder [%s] -> %s"), *FolderPath.ToString(), *AssetData.AssetName.ToString());
+            UE_LOG(LogMetaDataBakingLibrary, Display, TEXT("MetadataBaker: Discovered Settings Asset for folder [%s] -> %s"), *FolderPath.ToString(), *AssetData.AssetName.ToString());
         }
     }
 
     return OutBakingSettings.Num() > 0;
 }
 
-void UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(const FDirectoryPath& Directory)
+void UMetaDataBakingFunctionLibrary::ProcessBakeForDirectory(const FDirectoryPath& Directory)
 {
     TMap<UMetaDataBakingSettingsDataAsset*, FName> BakingSettings;
 
-    if (UMetaDataEditorFunctionLibrary::ScanForBakingSettings(Directory, BakingSettings))
+    if (UMetaDataBakingFunctionLibrary::ScanForBakingSettings(Directory, BakingSettings))
     {
-        UE_LOG(LogMetaDataBakerEditor, Display, TEXT("MetadataBaker: Found %d baking settings for folder: %s"), BakingSettings.Num(), *Directory.Path);
+        UE_LOG(LogMetaDataBakingLibrary, Display, TEXT("MetadataBaker: Found %d baking settings for folder: %s"), BakingSettings.Num(), *Directory.Path);
         
         for (const TPair< UMetaDataBakingSettingsDataAsset*, FName> SettingPaths : BakingSettings)
         { 
             TArray<FAssetData> RelevantAssets;
-            FindAssetUserDataOwners(FDirectoryPath(SettingPaths.Value.ToString()), RelevantAssets);
+            UMetaDataEditorFunctionLibrary::FindAssetUserDataOwners(FDirectoryPath(SettingPaths.Value.ToString()), RelevantAssets);
 
-            UE_LOG(LogMetaDataBakerEditor, Display, TEXT("MetadataBaker: Processing [%d] Assets in [%s]"), RelevantAssets.Num(), *SettingPaths.Value.ToString());
+            UE_LOG(LogMetaDataBakingLibrary, Display, TEXT("MetadataBaker: Processing [%d] Assets in [%s]"), RelevantAssets.Num(), *SettingPaths.Value.ToString());
             
             for (const FAssetData& AssetData : RelevantAssets)
             {
@@ -99,49 +100,13 @@ void UMetaDataEditorFunctionLibrary::ProcessBakeForDirectory(const FDirectoryPat
     }
     else
     {
-        UE_LOG(LogMetaDataBakerEditor, Warning, TEXT("MetadataBaker: No valid settings found in %s. Skipping."), *Directory.Path);
+        UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetadataBaker: No valid settings found in %s. Skipping."), *Directory.Path);
     }
 
     
 }
 
-void UMetaDataEditorFunctionLibrary::FindAssetUserDataOwners(const FDirectoryPath& Directory, TArray<FAssetData>& OutAssetData)
-{
-
-    OutAssetData.Empty();
-
-    // 1. Get the Asset Registry Module
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-    IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-
-    // 2. Setup a Filter to limit the search scope
-    FARFilter Filter;
-    Filter.PackagePaths.Add(*Directory.Path);
-    Filter.bRecursivePaths = true;
-
-    TArray<FAssetData> AssetList;
-    AssetRegistry.GetAssets(Filter, AssetList);
-
-    // 3. Iterate and check for the interface
-    for (const FAssetData& Asset : AssetList)
-    {
-        UClass* AssetClass = Asset.GetClass(EResolveClass::Yes);
-
-        // If not in memory, you may need to call GetAsset() or use the ClassPath
-        if (!AssetClass)
-        {
-            AssetClass = Asset.GetClass(); // This might return null if the asset is not loaded
-        }
-
-        // Check for interface implementation
-        if (AssetClass && AssetClass->ImplementsInterface(UInterface_AssetUserData::StaticClass()))
-        {
-            OutAssetData.Add(Asset);
-        }
-    }
-}
-
-bool UMetaDataEditorFunctionLibrary::BakeMetadataForAsset(UObject* Asset)
+bool UMetaDataBakingFunctionLibrary::BakeMetadataForAsset(UObject* Asset)
 {
     if (!Asset)
     {
@@ -165,29 +130,34 @@ bool UMetaDataEditorFunctionLibrary::BakeMetadataForAsset(UObject* Asset)
 
     if(FoundSettings.IsEmpty())
     {
-        UE_LOG(LogMetaDataBakerEditor, Warning, TEXT("MetadataBaker: Failed to locate a Baking Settings asset managing path: %s"), *TargetFolder.Path);
+        UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetadataBaker: Failed to locate a Baking Settings asset managing path: %s"), *TargetFolder.Path);
         return false;
     }
     
    UMetaDataBakingSettingsDataAsset* ResolvedSettings = ResolveSettingsForAsset(Asset->GetPathName(), FoundSettings);
-
+    
+    // If the saved object is completely unrelated to your trait pipeline, exit cleanly without overhead
+    if (!MetadataInterface)
+    {
+        return false;
+    }
     if(!IsValid(ResolvedSettings))
     {
-        UE_LOG(LogMetaDataBakerEditor, Warning, TEXT("MetadataBaker: Failed to locate a Baking Settings asset managing path: %s"), *TargetFolder.Path);
+        UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetadataBaker: Failed to locate a Baking Settings asset managing path: %s"), *TargetFolder.Path);
         return false;
     }
     
     const TArray<UAssetUserData*>* MetaData = MetadataInterface->GetAssetUserDataArray();
     if(!MetaData || MetaData->Num() == 0)
     {
-        UE_LOG(LogMetaDataBakerEditor, Warning, TEXT("MetaData Baker : No Asset User Data found on [%s]"), *Asset->GetFName().ToString());
+        UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetaData Baker : No Asset User Data found on [%s]"), *Asset->GetFName().ToString());
         return false;
     }
 
     // Ensure the designer selected a naming convention in the settings
     if (!ResolvedSettings->GetNamingConvention())
     {
-        UE_LOG(LogTemp, Error, TEXT("MetaData Baker: No Naming Convention configured in Settings Asset [%s]"), *ResolvedSettings->GetName());
+        UE_LOG(LogMetaDataBakingLibrary, Error, TEXT("MetaData Baker: No Naming Convention configured in Settings Asset [%s]"), *ResolvedSettings->GetName());
         return false;
     }
 
@@ -196,7 +166,7 @@ bool UMetaDataEditorFunctionLibrary::BakeMetadataForAsset(UObject* Asset)
     bool bBakeSucceeded = true;
     UMetaDataEditorSubsystem* MetaDataEditorSubsystem = GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>();
     
-    UE_LOG(LogTemp, Error, TEXT("MetaData Baker: [%s] Extracting Meta Data"), *ResolvedSettings->GetName());
+    UE_LOG(LogMetaDataBakingLibrary, Error, TEXT("MetaData Baker: [%s] Extracting Meta Data"), *ResolvedSettings->GetName());
     for (UAssetUserData* UserData : *MetaData)
     {
         if(!UserData->Implements<UMetaDataExportInterface>())
@@ -208,7 +178,7 @@ bool UMetaDataEditorFunctionLibrary::BakeMetadataForAsset(UObject* Asset)
         IMetaDataExportInterface::Execute_ExportTraits(UserData, ExtractedTraits, true);
         
         
-        UE_LOG(LogTemp, Error, TEXT("MetaData Baker: [%s] Extracted [%d] Meta Data Entries"), *ResolvedSettings->GetName(), ExtractedTraits.Num());
+        UE_LOG(LogMetaDataBakingLibrary, Error, TEXT("MetaData Baker: [%s] Extracted [%d] Meta Data Entries"), *ResolvedSettings->GetName(), ExtractedTraits.Num());
         
         for (TInstancedStruct<FMetaDataTrait_Base> Trait : ExtractedTraits)
         {
@@ -244,12 +214,12 @@ bool UMetaDataEditorFunctionLibrary::BakeMetadataForAsset(UObject* Asset)
 }
 
 
-UMetaDataBakingSettingsDataAsset* UMetaDataEditorFunctionLibrary::ResolveSettingsForAsset(const FString& TargetAssetPath,
+UMetaDataBakingSettingsDataAsset* UMetaDataBakingFunctionLibrary::ResolveSettingsForAsset(const FString& TargetAssetPath,
                                                              const TMap<UMetaDataBakingSettingsDataAsset*, FName>&
                                                              SettingsMap)
 {
 
-    UE_LOG(LogMetaDataBakerEditor, Log, TEXT("Resolving Settings for [%s] : [%d] Found"), *TargetAssetPath, SettingsMap.Num());
+    UE_LOG(LogMetaDataBakingLibrary, Log, TEXT("Resolving Settings for [%s] : [%d] Found"), *TargetAssetPath, SettingsMap.Num());
 
     // Start with the folder containing the asset
     FString CurrentSearchPath = FPaths::GetPath(TargetAssetPath); 
@@ -259,13 +229,13 @@ UMetaDataBakingSettingsDataAsset* UMetaDataEditorFunctionLibrary::ResolveSetting
     {
         FName SearchName = FName(*CurrentSearchPath);
         
-        UE_LOG(LogMetaDataBakerEditor, Log, TEXT("Searching [%s] for Settings"), *CurrentSearchPath);
+        UE_LOG(LogMetaDataBakingLibrary, Log, TEXT("Searching [%s] for Settings"), *CurrentSearchPath);
         
         // Iterate to find the matching folder path in the map's values
         for (const TPair<UMetaDataBakingSettingsDataAsset*, FName>& Pair : SettingsMap)
         {
             
-            UE_LOG(LogMetaDataBakerEditor, Log, TEXT("Comparing [%s] : [%s]"), *Pair.Value.ToString(), *SearchName.ToString());
+            UE_LOG(LogMetaDataBakingLibrary, Log, TEXT("Comparing [%s] : [%s]"), *Pair.Value.ToString(), *SearchName.ToString());
             if (Pair.Value == SearchName)
             {
                 return Pair.Key; // Found the closest parent configuration!

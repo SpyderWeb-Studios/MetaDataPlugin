@@ -6,9 +6,11 @@
 #include "Engine/DataAsset.h"
 #include "Objects/MetaDataNamingConvention.h"
 #include <Objects/Providers/MetaDataStorageProvider_Base.h>
+
+#include "Libraries/FBakingSettingsAssetIndexer.h"
 #include "MetaDataBakingSettingsDataAsset.generated.h"
 
-#pragma once
+DECLARE_LOG_CATEGORY_EXTERN(LogMetaDataSettings, Log, Log);
 
 USTRUCT(BlueprintType)
 struct FMetadataProviderArray
@@ -24,7 +26,7 @@ struct FMetadataProviderArray
  * 
  */
 UCLASS()
-class METADATAEDITOR_API UMetaDataBakingSettingsDataAsset : public UPrimaryDataAsset
+class METADATAEDITORCORE_API UMetaDataBakingSettingsDataAsset : public UPrimaryDataAsset
 {
 	GENERATED_BODY()
 
@@ -36,14 +38,19 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	FMetadataProviderArray GetTraitProviders(const UScriptStruct* Struct) const {return TraitRoutingMap.FindRef(Struct);}
+
+	void AssignCache(TSet<TSoftObjectPtr<UObject>> Cache);
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TSet<TSoftObjectPtr<UObject>> CachedAssets;
 	
 protected:
 	
-	UPROPERTY(EditDefaultsOnly, Instanced)
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Naming")
 	UMetaDataNamingConvention* NamingConvention;
 	
 	// The central routing map. Links a Trait Struct to its destination Storage Providers.
-	UPROPERTY(EditDefaultsOnly, Category = "Metadata Baking|Routing")
+	UPROPERTY(EditDefaultsOnly, Category = "Routing")
 	TMap<UScriptStruct*, FMetadataProviderArray> TraitRoutingMap;
 
 	
