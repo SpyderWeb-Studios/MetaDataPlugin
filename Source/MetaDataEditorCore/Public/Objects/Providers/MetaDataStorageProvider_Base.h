@@ -3,42 +3,35 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Objects/Providers/MetaDataStorageProvider_Base.h"
-#include "Libraries/FMetaDataRegistryItem.h"
-#include "MetaDataStorage_DataTable.generated.h"
+#include "UObject/Object.h"
+#include "Interfaces/MetaDataStorageProviderInterface.h"
+#include "MetaDataStorageProvider_Base.generated.h"
+
+DECLARE_LOG_CATEGORY_EXTERN(LogMetaDataStorageProvider, Log, Log)
 
 /**
  * 
  */
-UCLASS(Blueprintable, BlueprintType, DefaultToInstanced)
-class METADATAEDITOR_API UMetaDataStorage_DataTable : public UMetaDataStorageProvider_Base
+UCLASS(Abstract, DefaultToInstanced, EditInlineNew, Blueprintable, BlueprintType)
+class METADATAEDITORCORE_API UMetaDataStorageProvider_Base : public UObject, public IMetaDataStorageProviderInterface
 {
 	GENERATED_BODY()
 	
-public: 
-
 	virtual bool ValidateTarget_Implementation(const UScriptStruct* TraitType) const override;
 
 	/**
 	 * Takes the deterministic key and the pure data payload.
 	 * Passed as a const reference to ensure providers remain stateless.
 	 */
-
+	
 	virtual bool ProcessMetadata_Implementation(const FName& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset) override;
 
 	/**
 	 * Called after all traits are processed. Used to call MarkPackageDirty(),
 	 * save UDataAssets to disk, or close external file streams.
 	 */
-
+	
 	virtual void Flush_Implementation() override;
 
-protected:
-
-	UPROPERTY(EditDefaultsOnly)
-	TSoftObjectPtr<UDataTable> TargetDataTable;
-
-	UPROPERTY(VisibleAnywhere)
-	TMap<FName, FMetaDataRegistryItem> CachedRows;
-
 };
+

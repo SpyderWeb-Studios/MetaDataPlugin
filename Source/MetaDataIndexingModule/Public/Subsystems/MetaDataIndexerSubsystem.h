@@ -5,18 +5,20 @@
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
 #include "Framework/Notifications/NotificationManager.h"
-#include "Libraries/FAssetIndexer.h"
+#include "UObject/AssetRegistryTagsContext.h"
+#include "Libraries/FBakingSettingsAssetIndexer.h"
+#include "Libraries/FExtractionResult.h"
 #include "MetaDataIndexerSubsystem.generated.h"
 
 /**
  * This is designed to isolate the indexing logic to reduce the bloat in the core meta data editor subsystem.
  *
  * This includes:
- *  - JSON De/Serialisation
  *  - Data Registry Data Stamping on assets
  *    - Source Control Management
  */
 
+class UMetaDataBakingSettingsDataAsset;
 DECLARE_LOG_CATEGORY_EXTERN(LogMetaDataIndexer, Log, Log);
 
 UCLASS()
@@ -24,34 +26,33 @@ class METADATAINDEXINGMODULE_API UMetaDataIndexerSubsystem : public UEditorSubsy
 {
 	GENERATED_BODY()
 
+	friend class UMetaDataEditorSubsystem;
+	
 public:
 	UMetaDataIndexerSubsystem();
-	
-	void StartupIndexing(const FAssetData& AssetData);
-	
+
+
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
-	virtual void Deinitialize() override;
 
-	UFUNCTION(BlueprintCallable)
-	void IndexAssets(bool bReIndex = false);
+	void RefreshIndex();
 
-	UFUNCTION(BlueprintCallable)
-	void SerialiseIndex();
+	void GetDirectoryIndex(const FDirectoryPath& DirectoryPath, TSet<TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>>& OutIndex);
 
-	UFUNCTION()
-	bool DeserialiseIndex();
+	EMetaDataBakingAssetStatus GetAssetStatus(UObject* Asset) const;
 
 protected:
 
-	void IndexAssets_Internal(const TArray<FDirectoryPath>& RootFolder, bool bReIndex = false);
+	void RefreshDataAssetCache(UMetaDataBakingSettingsDataAsset* DataAsset);
+	
+	void HandleAssetBaked(UObject* Asset, bool bSuccess);
+	void HandleMetaDataExtracted(UObject* Object, FMetaDataExtractionResult MetaDataExtractionResult);
+
+
 
 	
-	FString IndexAssetJSONPath;
 
-	FAssetIndexer IndexedAssets;
-	FCriticalSection IndexingMutex;
-	std::atomic<bool> bCancelIndexing{false};
-	FProgressNotificationHandle ProgressHandle;
-	TFuture<void> IndexingHandle;
-	
+	TSet<TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>> CachedBakingSettingsDataAssets;
+
+	TSet<FMetaDataBakingSettingsAssetIndex> CachedIndex;
+
 };

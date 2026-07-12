@@ -7,6 +7,7 @@
 #include <FunctionLibraries/MetaDataEditorFunctionLibrary.h>
 
 #include "FunctionLibraries/MetaDataBakingFunctionLibrary.h"
+#include "Slate/FMetaDataSettingsCustomisation.h"
 #include "Subsystems/MetaDataEditorSubsystem.h"
 #include "Subsystems/MetaDataIndexerSubsystem.h"
 #include "Widgets/Notifications/SNotificationList.h"
@@ -21,6 +22,13 @@ void FMetaDataEditor::StartupModule()
 {
 	// 1. Bind to the UToolMenus startup callback
 	UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FMetaDataEditor::RegisterMenus));
+
+	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
+	PropertyModule.RegisterCustomClassLayout(
+		UMetaDataBakingSettingsDataAsset::StaticClass()->GetFName(),
+		FOnGetDetailCustomizationInstance::CreateStatic(&FMetaDataSettingsCustomisation::MakeInstance)
+	);
+	PropertyModule.NotifyCustomizationModuleChanged();
 }
 
 void FMetaDataEditor::ShutdownModule()
@@ -96,8 +104,7 @@ void FMetaDataEditor::PopulateBakeMenu(UToolMenu* Menu)
 		{
 			if (UMetaDataIndexerSubsystem* Tracker = GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>())
 			{
-				// Call the function on your Tracker that wipes the JSON and runs the FARFilter
-				Tracker->IndexAssets(true);
+				Tracker->RefreshIndex();
 			}
 		}))
 	);

@@ -12,7 +12,8 @@ public class MetaDataEditor : ModuleRules
 	{
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "UnrealEd",
 			"Slate",
-			"SlateCore", "MetaDataEditorCore"});
+			"SlateCore", "MetaDataEditorCore", "MetaDataIndexingModule"
+		});
 		
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
@@ -26,7 +27,6 @@ public class MetaDataEditor : ModuleRules
             "EditorSubsystem",    // Required for the EditorSubsystem,
             "ToolMenus",
             "Projects",
-            "MetaDataIndexingModule"
 		});
 		
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;

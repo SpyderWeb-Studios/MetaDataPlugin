@@ -8,7 +8,7 @@
 
 
 UCLASS(Blueprintable, EditInlineNew)
-class METADATAEDITOR_API UMetaDataNamingConvention : public UObject
+class METADATAEDITORCORE_API UMetaDataNamingConvention : public UObject
 {
 	GENERATED_BODY()
 

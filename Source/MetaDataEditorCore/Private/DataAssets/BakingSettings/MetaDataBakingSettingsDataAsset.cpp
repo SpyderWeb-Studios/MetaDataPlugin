@@ -3,7 +3,18 @@
 
 #include "DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
+
+DEFINE_LOG_CATEGORY(LogMetaDataSettings);
+
 FPrimaryAssetId UMetaDataBakingSettingsDataAsset::GetPrimaryAssetId() const
 {
 	return FPrimaryAssetId("MetaDataBakingSettings", GetFName());
 }
+
+void UMetaDataBakingSettingsDataAsset::AssignCache(TSet<TSoftObjectPtr<UObject>> Cache)
+{
+	CachedAssets = Cache;
+}
+
+

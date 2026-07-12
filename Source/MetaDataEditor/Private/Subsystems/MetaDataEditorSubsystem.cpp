@@ -5,6 +5,7 @@
 #include "InstancedStruct.h"
 #include "JsonObjectConverter.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h"
 #include "FunctionLibraries/MetaDataBakingFunctionLibrary.h"
 #include "Interfaces/MetaDataStorageProviderInterface.h"
 #include "UObject/ObjectSaveContext.h"
@@ -12,6 +13,10 @@
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "GenericPlatform/GenericPlatformApplicationMisc.h"
+#include "Interfaces/MetaDataExportInterface.h"
+#include "Libraries/FCoreMetaDataEditorDelegates.h"
+#include "Subsystems/MetaDataIndexerSubsystem.h"
+#include "Widgets/Notifications/SProgressBar.h"
 
 DEFINE_LOG_CATEGORY(LogMetaDataEditorSubsystem);
 
@@ -19,32 +24,6 @@ UMetaDataEditorSubsystem::UMetaDataEditorSubsystem()
 {
 }
 
-void UMetaDataEditorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
-{
-    Super::Initialize(Collection);
-
-
-
-    // Bind to the asset deletion event
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-    AssetRegistryModule.Get().OnAssetRemoved().AddUObject(this, &UMetaDataEditorSubsystem::OnAssetDeleted);
-
-    // 
-    UPackage::PreSavePackageWithContextEvent.AddUObject(this, &UMetaDataEditorSubsystem::OnPreSavePackage);
-}
-
-void UMetaDataEditorSubsystem::Deinitialize()
-{
-    if (FModuleManager::Get().IsModuleLoaded("AssetRegistry"))
-    {
-        FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-        AssetRegistryModule.Get().OnAssetRemoved().RemoveAll(this);
-    }
-
-    UPackage::PreSavePackageWithContextEvent.RemoveAll(this);
-    
-    Super::Deinitialize();
-}
 
 void UMetaDataEditorSubsystem::MarkProviderModified(UObject* StorageProviderInterface)
 {
@@ -123,7 +102,7 @@ void UMetaDataEditorSubsystem::RequestDirectoriesBake(const TArray<FDirectoryPat
             BakingNotify->SetSubText(FText::FromString(FString::Printf(TEXT("Baking: %s"), *Dir.Path)));
         }
 
-        UMetaDataBakingFunctionLibrary::ProcessBakeForDirectory(Dir);
+        BakeDirectory(Dir);
 
         // This forces Unreal to momentarily process Slate inputs (like our Cancel click) 
         // before starting the next heavy directory iteration.
@@ -148,24 +127,147 @@ void UMetaDataEditorSubsystem::RequestDirectoriesBake(const TArray<FDirectoryPat
     }
 }
 
-void UMetaDataEditorSubsystem::OnAssetDeleted(const FAssetData& AssetData)
+void UMetaDataEditorSubsystem::BakeDirectory(const FDirectoryPath& Directory)
 {
-    // The RowName is the path of the deleted asset
-    FName RowNameToRemove = FName(*AssetData.GetObjectPathString());
 
-    // Check all metadata tables and strip out the deleted asset
-    TArray<UDataTable*> AllMetaTables = GetAllMetadataTables();
-    for (UDataTable* Table : AllMetaTables)
+
+    UE_LOG(LogMetaDataEditorSubsystem, Display, TEXT("Baking Directory [%s]"), *Directory.Path);
+    TSet<TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>> Settings;
+    GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>()->GetDirectoryIndex(Directory, Settings);
+
+    for(const TSoftObjectPtr<UMetaDataBakingSettingsDataAsset> Setting : Settings)
     {
-        if (Table && Table->GetRowMap().Contains(RowNameToRemove))
-        {
-            Table->RemoveRow(RowNameToRemove);
-            Table->MarkPackageDirty();
-            UE_LOG(LogMetaDataEditorSubsystem, Display, TEXT("Asset Deleted: Cleaned up row [%s] from [%s]"), *RowNameToRemove.ToString(), *Table->GetName());
-        }
+        BakeBakerySetting(Setting.LoadSynchronous());
     }
 }
 
+bool UMetaDataEditorSubsystem::BakeBakerySetting(UMetaDataBakingSettingsDataAsset* BakerySetting)
+{
+    for(const TSoftObjectPtr<UObject> Asset : BakerySetting->CachedAssets)
+    {
+        BakeCachedAsset(BakerySetting, Asset);
+    }
+
+    return true;
+}
+
+bool UMetaDataEditorSubsystem::BakeCachedAsset(const UMetaDataBakingSettingsDataAsset* BakerySetting, const TSoftObjectPtr<UObject>& Asset)
+{
+    if (!Asset)
+    {
+        return false;
+    }
+
+    // Validate the injected parameter
+    if (!IsValid(BakerySetting))
+    {
+        UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetadataBaker: Invalid Baking Settings provided for Asset: %s"), *Asset->GetName());
+        return false;
+    }
+
+    // Ensure the designer selected a naming convention in the settings
+    if (!BakerySetting->GetNamingConvention())
+    {
+        UE_LOG(LogMetaDataBakingLibrary, Error, TEXT("MetaData Baker: No Naming Convention configured in Settings Asset [%s]"), *BakerySetting->GetName());
+        return false;
+    }
+
+    // Extract Traits using the new helper
+    TArray<TInstancedStruct<FMetaDataTrait_Base>> ExtractedTraits;
+    if (!ExtractAssetTraits(Asset, ExtractedTraits))
+    {
+        // Extraction failed or had no relevant user data
+        return false;
+    }
+
+    UE_LOG(LogMetaDataBakingLibrary, Log,
+        TEXT("MetaData Baker: [%s] Extracted [%d] Meta Data Entries"),
+        *BakerySetting->GetName(),
+        ExtractedTraits.Num());
+
+    // Process Data
+    FName RegistryKey = BakerySetting->GetNamingConvention()->GenerateRegistryKey(Asset->GetPathName()); 
+    UMetaDataEditorSubsystem* MetaDataEditorSubsystem = GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>();
+    bool bBakeSucceeded = true;
+    
+    for (const TInstancedStruct<FMetaDataTrait_Base>& Trait : ExtractedTraits)
+    {
+        if (!Trait.IsValid()) 
+        {
+            continue;
+        }
+
+        // Identify the trait type for O(1) routing
+        const UScriptStruct* TraitType = Trait.GetScriptStruct(); 
+
+        // Look up the Struct type in your Settings Map
+        FMetadataProviderArray TargetGroup = BakerySetting->GetTraitProviders(TraitType);
+        
+        // Iterate through the array of providers and write
+        for (UMetaDataStorageProvider_Base* Provider : TargetGroup.ProviderArray)
+        {
+            if (Provider)
+            {
+                // Hand the payload to the resolved provider 
+                if (!IMetaDataStorageProviderInterface::Execute_ProcessMetadata(Provider, RegistryKey, Trait, Asset)) 
+                {
+                    bBakeSucceeded = false;
+                }
+
+                if (MetaDataEditorSubsystem)
+                {
+                    MetaDataEditorSubsystem->MarkProviderModified(Provider);
+                }
+            }
+        }
+    }
+
+    FCoreMetaDataEditorDelegates::OnAssetBaked.Broadcast(Asset.LoadSynchronous(), bBakeSucceeded);
+    return bBakeSucceeded;
+}
+
+bool UMetaDataEditorSubsystem::ExtractAssetTraits(const TSoftObjectPtr<UObject>& Asset,
+    TArray<TInstancedStruct<FMetaDataTrait_Base>> OutTraits)
+{
+    IInterface_AssetUserData* MetadataInterface = Cast<IInterface_AssetUserData>(Asset.LoadSynchronous());
+    
+    // If the saved object is completely unrelated to your trait pipeline, exit cleanly
+    if (!MetadataInterface)
+    {
+        return false;
+    }
+
+
+    FMetaDataExtractionResult Result;
+    Result.bHasTraits = false;
+    Result.bTraitsSuccessfullyExtracted = false;
+    
+    const TArray<UAssetUserData*>* MetaData = MetadataInterface->GetAssetUserDataArray();
+    if (!MetaData || MetaData->Num() == 0)
+    {
+        UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetaData Baker : No Asset User Data found on [%s]"), *Asset->GetFName().ToString());
+        // Need to broadcast the attempt of the extraction
+        FCoreMetaDataEditorDelegates::OnMetaDataExtracted.Broadcast(Asset.LoadSynchronous(), Result);
+        return false;
+    }
+
+    bool bFoundValidData = false;
+
+    for (UAssetUserData* UserData : *MetaData)
+    {
+        if (UserData && UserData->Implements<UMetaDataExportInterface>())
+        {
+            bFoundValidData = true;
+            IMetaDataExportInterface::Execute_ExportTraits(UserData, OutTraits, true);
+        }
+    }
+
+    Result.bHasTraits = OutTraits.Num() > 0;
+    Result.bTraitsSuccessfullyExtracted = bFoundValidData;
+
+    FCoreMetaDataEditorDelegates::OnMetaDataExtracted.Broadcast(Asset.LoadSynchronous(), Result);
+    return bFoundValidData;
+}
 
 
 TArray<UDataTable*> UMetaDataEditorSubsystem::GetAllMetadataTables()
@@ -194,26 +296,4 @@ TArray<UDataTable*> UMetaDataEditorSubsystem::GetAllMetadataTables()
         }
     }
     return FoundTables;
-}
-
-void UMetaDataEditorSubsystem::OnPreSavePackage(UPackage* Package, FObjectPreSaveContext Context)
-{
-    // Ignore autosaves or cooking saves to prevent infinite loops
-    if (Context.IsProceduralSave() || Context.IsCooking()) return;
-
-    if (!Package) return;
-
-    TArray<UObject*> ObjectsInPackage;
-    GetObjectsWithOuter(Package, ObjectsInPackage, false);
-
-    for (UObject* Obj : ObjectsInPackage)
-    {
-        // 1. Check if the object is either a Static Mesh or a Skeletal Mesh
-        if (Obj->IsA<UStaticMesh>() || Obj->IsA<USkeletalMesh>())
-        {
-            UMetaDataBakingFunctionLibrary::BakeMetadataForAsset(Obj);
-        }
-    }
-
-    FlushAllModifiedStorageProviders();
 }

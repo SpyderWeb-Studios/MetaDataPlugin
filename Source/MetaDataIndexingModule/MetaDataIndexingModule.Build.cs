@@ -13,7 +13,8 @@ public class MetaDataIndexingModule : ModuleRules
             {
                 "Core",
                 "UnrealEd",
-                "EditorSubsystem"
+                "EditorSubsystem",
+                "MetaDataEditorCore",
             }
         );
 
@@ -24,9 +25,8 @@ public class MetaDataIndexingModule : ModuleRules
                 "Engine",
                 "Slate",
                 "SlateCore", 
-                "MetaDataEditorCore",
                 "JSON", "JsonUtilities", 
-                "Projects",
+                "Projects", "EditorScriptingUtilities",
             }
         );
     }

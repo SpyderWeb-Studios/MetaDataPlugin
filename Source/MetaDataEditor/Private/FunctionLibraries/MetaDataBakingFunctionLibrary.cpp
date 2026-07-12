@@ -135,7 +135,12 @@ bool UMetaDataBakingFunctionLibrary::BakeMetadataForAsset(UObject* Asset)
     }
     
    UMetaDataBakingSettingsDataAsset* ResolvedSettings = ResolveSettingsForAsset(Asset->GetPathName(), FoundSettings);
-
+    
+    // If the saved object is completely unrelated to your trait pipeline, exit cleanly without overhead
+    if (!MetadataInterface)
+    {
+        return false;
+    }
     if(!IsValid(ResolvedSettings))
     {
         UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetadataBaker: Failed to locate a Baking Settings asset managing path: %s"), *TargetFolder.Path);

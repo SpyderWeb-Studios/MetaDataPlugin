@@ -17,7 +17,7 @@ class UMetaDataStorageProviderInterface : public UInterface
 	GENERATED_BODY()
 };
 
-class METADATAEDITOR_API IMetaDataStorageProviderInterface
+class METADATAEDITORCORE_API IMetaDataStorageProviderInterface
 {
 	GENERATED_BODY()
 

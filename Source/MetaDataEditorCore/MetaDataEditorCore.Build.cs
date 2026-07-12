@@ -10,6 +10,8 @@ public class MetaDataEditorCore : ModuleRules
             new string[]
             {
                 "Core",
+                "MetaDataPlugin",
+                "StructUtils",       // Required for FInstancedStruct
             }
         );
 
@@ -19,8 +21,7 @@ public class MetaDataEditorCore : ModuleRules
                 "CoreUObject",
                 "Engine",
                 "Slate",
-                "SlateCore", 
-                "MetaDataPlugin"
+                "SlateCore",
             }
         );
     }
