@@ -2,26 +2,66 @@
 
 
 #include "Subsystems/MetaDataEditorSubsystem.h"
-#include "InstancedStruct.h"
-#include "JsonObjectConverter.h"
+
+#include "Editor.h"
+#include "Subsystems/MetaDataIndexerSubsystem.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h"
 #include "Interfaces/MetaDataStorageProviderInterface.h"
-#include "UObject/ObjectSaveContext.h"
+#include "Interfaces/MetaDataExportInterface.h"
+
 #include "Libraries/FMetaDataRegistryItem.h"
+#include "Libraries/FCoreMetaDataEditorDelegates.h"
+#include "Libraries/FMetaScopedBakeSession.h"
+#include "ScopedTransaction.h"
+
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "GenericPlatform/GenericPlatformApplicationMisc.h"
-#include "Interfaces/MetaDataExportInterface.h"
-#include "Libraries/FCoreMetaDataEditorDelegates.h"
-#include "Libraries/FMetaScopedBakeSession.h"
+
 #include "Objects/AssetUserData/MetaDataRegistryIdData.h"
-#include "Subsystems/MetaDataIndexerSubsystem.h"
+#include "UObject/ObjectSaveContext.h"
+#include "JsonObjectConverter.h"
+#include "Interfaces/MetaDataAssetInterface.h"
 
 DEFINE_LOG_CATEGORY(LogMetaDataEditorSubsystem);
 
 UMetaDataEditorSubsystem::UMetaDataEditorSubsystem()
 {
+}
+
+void UMetaDataEditorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+    Super::Initialize(Collection);
+
+    GEditor->GetEditorSubsystem<UImportSubsystem>()->OnAssetPostImport.AddUObject(this, &UMetaDataEditorSubsystem::HandlePostImport);
+    GEditor->GetEditorSubsystem<UImportSubsystem>()->OnAssetReimport.AddUObject(this, &UMetaDataEditorSubsystem::HandlePostReImport);
+    FCoreUObjectDelegates::OnObjectModified.AddUObject(this, &UMetaDataEditorSubsystem::HandleObjectModified);
+    FCoreUObjectDelegates::OnObjectPreSave.AddUObject(this, &UMetaDataEditorSubsystem::HandleObjectPreSave);
+
+    // Inside your Initialize() function:
+    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+
+    // Bind to asset removal / renamed
+    AssetRegistryModule.Get().OnAssetRemoved().AddUObject(this, &UMetaDataEditorSubsystem::HandleAssetRemoved);
+    AssetRegistryModule.Get().OnAssetRenamed().AddUObject(this, &UMetaDataEditorSubsystem::HandleAssetRenamed);
+}
+
+void UMetaDataEditorSubsystem::Deinitialize()
+{
+    GEditor->GetEditorSubsystem<UImportSubsystem>()->OnAssetPostImport.RemoveAll(this);
+    GEditor->GetEditorSubsystem<UImportSubsystem>()->OnAssetReimport.RemoveAll(this);
+
+    FCoreUObjectDelegates::OnObjectModified.RemoveAll(this);
+    FCoreUObjectDelegates::OnObjectPreSave.RemoveAll(this);
+    
+    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+
+    // Bind to asset removal / renamed
+    AssetRegistryModule.Get().OnAssetRemoved().RemoveAll(this);
+    AssetRegistryModule.Get().OnAssetRenamed().RemoveAll(this);
+    
+    Super::Deinitialize();
 }
 
 
@@ -181,7 +221,7 @@ bool UMetaDataEditorSubsystem::BakeBakerySetting(UMetaDataBakingSettingsDataAsse
     for(const TSoftObjectPtr<UObject> Asset : BakerySetting->CachedAssets)
     {
         // Not breaking the loop due to a single asset not baking
-        BakeCachedAsset(BakerySetting, Asset));
+        BakeCachedAsset(BakerySetting, Asset);
     }
 
     return BakerySetting->CachedAssets.Num() > 0;
@@ -386,6 +426,8 @@ bool UMetaDataEditorSubsystem::ExtractAssetTraits(const TSoftObjectPtr<UObject>&
     return bFoundValidData;
 }
 
+
+
 void UMetaDataEditorSubsystem::BeginBakeSession()
 {
     if(_BakeSessionDepth == 0)
@@ -440,3 +482,82 @@ void UMetaDataEditorSubsystem::EndBakeSession()
     
 }
 
+void UMetaDataEditorSubsystem::RefreshAsset(UObject* Asset)
+{
+    // Refresh Asset
+    IInterface_AssetUserData* AssetUserData = Cast<IInterface_AssetUserData>(Asset);
+    if(AssetUserData)
+    {
+        const TArray<UAssetUserData*>* AssetUserDataArray = AssetUserData->GetAssetUserDataArray();
+        if(AssetUserDataArray)
+        {
+            for(UAssetUserData* Data : *AssetUserDataArray)
+            {
+                if(Data->Implements<UMetaDataAssetInterface>())
+                {
+                    IMetaDataAssetInterface::Execute_RefreshMetaDataAsset(Data, Asset);
+                }
+            }
+        }
+    }
+}
+
+
+void UMetaDataEditorSubsystem::HandleAssetRenamed(const FAssetData& AssetData, const FString& String)
+{    
+    if (UMetaDataIndexerSubsystem* Tracker = GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>())
+    {
+        Tracker->RefreshDataAssetCache(Tracker->GetBakingSettingForAsset(AssetData.GetSoftObjectPath()).LoadSynchronous());
+    }
+}
+
+void UMetaDataEditorSubsystem::HandlePostImport(UFactory* Factory, UObject* Object)
+{
+    if (!Object) return;
+
+    RefreshAsset(Object);
+}
+
+void UMetaDataEditorSubsystem::HandlePostReImport(UObject* Object)
+{
+    // Re-imports rarely change metadata, but you can flag the asset for a 
+    // validation check here if your traits rely on vertex counts or bounds.
+    if (!Object) return;
+
+    RefreshAsset(Object);
+    
+}
+
+void UMetaDataEditorSubsystem::HandleObjectModified(UObject* Object)
+{
+    if (!Object) return;
+
+    // If an asset is tweaked in the details panel, update your UI or 
+    // mark the asset as "Dirty" in your custom Tracker Subsystem cache.
+    // Avoid heavy baking here, as this fires constantly during slider drags.
+
+    if(GEditor && !GEditor->IsTransactionActive())
+    {
+        RefreshAsset(Object);
+    }
+}
+
+void UMetaDataEditorSubsystem::HandleObjectPreSave(UObject* Object, FObjectPreSaveContext ObjectPreSaveContext)
+{
+    // Ignore cooking or auto-saves to prevent pipeline hitches
+    if (!Object || ObjectPreSaveContext.IsCooking() || ObjectPreSaveContext.IsFromAutoSave())
+    {
+        return;
+    }
+
+    RefreshAsset(Object);
+}
+
+void UMetaDataEditorSubsystem::HandleAssetRemoved(const FAssetData& AssetData)
+{
+    // Prevent "ghost" paths in your JSON index when an asset is deleted
+    if (UMetaDataIndexerSubsystem* Tracker = GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>())
+    {
+        Tracker->RefreshDataAssetCache(Tracker->GetBakingSettingForAsset(AssetData.GetSoftObjectPath()).LoadSynchronous());
+    }
+}

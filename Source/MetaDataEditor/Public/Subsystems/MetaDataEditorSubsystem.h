@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
+#include "Factories/Factory.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "StructUtils/InstancedStruct.h"
 
@@ -27,6 +28,8 @@ class METADATAEDITOR_API UMetaDataEditorSubsystem : public UEditorSubsystem
 	friend struct FMetaScopedBakeSession;
 public:
 	UMetaDataEditorSubsystem();
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
 
 	void MarkProviderModified(UObject* StorageProvider);
 
@@ -51,6 +54,16 @@ protected:
 	UPROPERTY(Transient) // Use Transient so it doesn't serialize the reference itself
 	TSet<TObjectPtr<UObject>> ModifiedStorageProviders;
 
+/* Callback Handlers */
+	
+	void HandleAssetRenamed(const FAssetData& AssetData, const FString& String);
+	void HandlePostImport(UFactory* Factory, UObject* Object);
+	void HandlePostReImport(UObject* Object);
+	void HandleObjectModified(UObject* Object);
+	void HandleObjectPreSave(UObject* Object, FObjectPreSaveContext ObjectPreSaveContext);
+	void HandleAssetRemoved(const FAssetData& AssetData);
+	
+	
 private:
 
 	// todo : Scoped Baking Session for automatic flush detection
@@ -59,5 +72,5 @@ private:
 
 	void BeginBakeSession();
 	void EndBakeSession();
-	
+	void RefreshAsset(UObject* Asset);
 };

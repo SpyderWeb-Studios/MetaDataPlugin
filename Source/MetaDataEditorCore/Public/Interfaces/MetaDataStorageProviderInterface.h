@@ -3,9 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Macros/InstancedStructInclude.h"
 #include "UObject/Interface.h"
-#include "InstancedStruct.h"
-#include "StructUtils/InstancedStruct.h"
 #include "DataRegistryId.h"
 #include "MetaDataStorageProviderInterface.generated.h"
 
