@@ -7,6 +7,6 @@ enum class EMetaDataBakingAssetStatus : uint8 {
 	MDBAS_NONE,
 	MDBAS_Baked UMETA(DisplayName = "Baked"),
 	MDBAS_SavedOnly UMETA(DisplayName = "Saved Only"),
-	MDBAS_Dirty UMETA(DisplayName = "Dirty") ,
+	MDBAS_Indexed UMETA(DisplayName = "Indexed") ,
 	MDBAS_Empty UMETA(DisplayName= "No Data")
 };

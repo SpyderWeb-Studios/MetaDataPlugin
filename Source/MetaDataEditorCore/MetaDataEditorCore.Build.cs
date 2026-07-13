@@ -11,7 +11,8 @@ public class MetaDataEditorCore : ModuleRules
             {
                 "Core",
                 "MetaDataPlugin",
-                "StructUtils",       // Required for FInstancedStruct
+                "StructUtils",       // Required for FInstancedStruct,
+                "DataRegistry"
             }
         );
 

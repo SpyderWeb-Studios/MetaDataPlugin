@@ -105,44 +105,41 @@ inline void FMetaDataSettingsCustomisation::CustomizeDetails(IDetailLayoutBuilde
             
             .Image_Lambda([MetaDataIndexerSubsystem, ElementHandle]() -> const FSlateBrush*
             {
-                EMetaDataBakingAssetStatus CurrentStatus;
-                FPropertyAccess::Result bCanAccess;
-                {
-                    UObject* AssetPtr;
-                    bCanAccess = ElementHandle->GetValue(AssetPtr);
-                    CurrentStatus = MetaDataIndexerSubsystem->GetAssetStatus(AssetPtr);
-                }
+                EMetaDataBakingAssetStatus CurrentStatus = EMetaDataBakingAssetStatus::MDBAS_NONE;
                 
-                if (bCanAccess == FPropertyAccess::Success)
+                FString AssetPathString;
+                if (ElementHandle->GetValueAsFormattedString(AssetPathString) == FPropertyAccess::Success)
                 {
+                    FSoftObjectPath SoftPath(AssetPathString);
+                    CurrentStatus = MetaDataIndexerSubsystem->GetSoftAssetStatus(SoftPath);
+                }
                     
                     switch (CurrentStatus) {
                         case EMetaDataBakingAssetStatus::MDBAS_Baked:
                             return FAppStyle::GetBrush("Icons.SuccessWithColor");
                     case EMetaDataBakingAssetStatus::MDBAS_SavedOnly: 
-                        return FAppStyle::GetBrush("Icons.WarningWithColor");
-                    case EMetaDataBakingAssetStatus::MDBAS_Dirty: 
+                        return FAppStyle::GetBrush("Icons.Success");
+                    case EMetaDataBakingAssetStatus::MDBAS_Indexed: 
                         return FAppStyle::GetBrush("Icons.Warning");
                     case EMetaDataBakingAssetStatus::MDBAS_Empty:
                         return FAppStyle::GetBrush("Icons.Denied");
                         case EMetaDataBakingAssetStatus::MDBAS_NONE: break;
                         default: break;
                     }
-                }
+                
                 return nullptr;
             })
             .ToolTipText_Lambda([MetaDataIndexerSubsystem, ElementHandle]() -> FText
             {
-                EMetaDataBakingAssetStatus CurrentStatus;
-               FPropertyAccess::Result bCanAccess;
-               {
-                   UObject* AssetPtr;
-                   bCanAccess = ElementHandle->GetValue(AssetPtr);
-                   CurrentStatus = MetaDataIndexerSubsystem->GetAssetStatus(AssetPtr);
-               }
+                EMetaDataBakingAssetStatus CurrentStatus = EMetaDataBakingAssetStatus::MDBAS_NONE;
                 
-               if (bCanAccess == FPropertyAccess::Success)
-               {
+                 FString AssetPathString;
+                 if (ElementHandle->GetValueAsFormattedString(AssetPathString) == FPropertyAccess::Success)
+                 {
+                     FSoftObjectPath SoftPath(AssetPathString);
+                     CurrentStatus = MetaDataIndexerSubsystem->GetSoftAssetStatus(SoftPath);
+                 }
+                
 	                switch (CurrentStatus)
 					{
 					case EMetaDataBakingAssetStatus::MDBAS_Baked:
@@ -153,9 +150,9 @@ inline void FMetaDataSettingsCustomisation::CustomizeDetails(IDetailLayoutBuilde
 						{
 							return FText::FromString("Asset Saved, Meta Data not baked");
 						}
-					case EMetaDataBakingAssetStatus::MDBAS_Dirty:
+					case EMetaDataBakingAssetStatus::MDBAS_Indexed:
 						{
-							return FText::FromString("Asset not saved, Meta Data not baked");
+							return FText::FromString("Asset Indexed, Meta Data not baked");
 						}
 					case EMetaDataBakingAssetStatus::MDBAS_Empty:
 						{
@@ -163,7 +160,7 @@ inline void FMetaDataSettingsCustomisation::CustomizeDetails(IDetailLayoutBuilde
 						}
 					default: break;
 						}
-                }
+                
                 return FText::FromString("");
                     
             })

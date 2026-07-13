@@ -6,8 +6,8 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Subsystems/MetaDataEditorSubsystem.h"
 #include "FileHelpers.h" // Essential for SavePackage
-#include "FunctionLibraries/MetaDataBakingFunctionLibrary.h"
 #include "FunctionLibraries/MetaDataEditorFunctionLibrary.h"
+#include "Subsystems/MetaDataIndexerSubsystem.h"
 #include "UObject/SavePackage.h"
 
 
@@ -25,50 +25,7 @@ int32 UMetaDataBakerCommandlet::Main(const FString& Params)
 
 
     UMetaDataEditorSubsystem* MetaDataSubsystem = GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>();
-    if(!IsValid(MetaDataSubsystem)) return -1;
-
-    TArray<FAssetData> RelevantContent;
-    
-    FString AssetRoot;
-    // FParse::Value will populate AssetRoot with the string following "-AssetRoot="
-    // Note: It looks for the key including the equals sign in the text argument.
-    if (FParse::Value(*Params, TEXT("AssetRoot="), AssetRoot))
-    {
-        ScanContentForMeshes(FDirectoryPath(AssetRoot), RelevantContent);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("MetadataBaker: Missing required argument: -AssetRoot (eg. /Game/ )"));
-        return -1; // Fail gracefully if no path is provided
-    }
-    
-    UE_LOG(LogTemp, Display, TEXT("Found %d meshes to process."), RelevantContent.Num());
-
-    int32 Count = 0;
-    const int32 GC_Threshold = 50; // Trigger Garbage Collection every 50 assets
-
-    for (const FAssetData& Data : RelevantContent)
-    {
-        // 1. Get the actual object (loads it into memory)
-        UObject* LoadedAsset = Data.GetAsset();
-        
-        if (LoadedAsset)
-        {
-            UMetaDataBakingFunctionLibrary::BakeMetadataForAsset(LoadedAsset);
-        }
-
-        // 3. Periodic Garbage Collection
-        if (++Count % GC_Threshold == 0)
-        {
-            UE_LOG(LogTemp, Display, TEXT("Batch processing: %d / %d. Running GC..."), Count, RelevantContent.Num());
-            
-            // This clears out objects that are no longer referenced after BakeMetadataForAsset
-            CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
-        }
-    }
-
-    // Final GC
-    CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+    UMetaDataIndexerSubsystem* MetaDataIndexer = GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>();
 
     UE_LOG(LogTemp, Display, TEXT("=============================================="));
     UE_LOG(LogTemp, Display, TEXT("   TRAIT BATCHING COMPLETE. SAVING PACKAGES   "));

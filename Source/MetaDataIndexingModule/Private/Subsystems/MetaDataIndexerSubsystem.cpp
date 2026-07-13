@@ -9,11 +9,14 @@
 #include "DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h"
 #include "Engine/AssetManager.h"
 #include "Libraries/FCoreMetaDataEditorDelegates.h"
+#include "Serialization/BufferArchive.h"
+#include "Serialization/ObjectAndNameAsStringProxyArchive.h"
 
 DEFINE_LOG_CATEGORY(LogMetaDataIndexer);
 
 UMetaDataIndexerSubsystem::UMetaDataIndexerSubsystem()
 {
+	CacheFile = FPaths::ProjectSavedDir() / "MetaDataBaker" / TEXT("Cache.bin");
 }
 
 
@@ -21,13 +24,34 @@ UMetaDataIndexerSubsystem::UMetaDataIndexerSubsystem()
 void UMetaDataIndexerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
-    RefreshIndex();
+
+	DeserialiseIndex();
+	
 	FCoreMetaDataEditorDelegates::OnAssetBaked.AddUObject(this, &UMetaDataIndexerSubsystem::HandleAssetBaked);
 	FCoreMetaDataEditorDelegates::OnMetaDataExtracted.AddUObject(this, &UMetaDataIndexerSubsystem::HandleMetaDataExtracted);
 }
 
+void UMetaDataIndexerSubsystem::Deinitialize()
+{
+	SerialiseIndex();
+	
+	Super::Deinitialize();
+	
+}
+
 void UMetaDataIndexerSubsystem::RefreshIndex()
 {
+
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+	if (AssetRegistry.IsLoadingAssets())
+	{
+		UE_LOG(LogMetaDataIndexer, Warning, TEXT("Asset Registry is still loading. Forcing synchronous scan of /Game/ to find DataAssets..."));
+		TArray<FString> BasePaths = { TEXT("/Game") }; // Scans the main content folder
+		AssetRegistry.ScanPathsSynchronous(BasePaths, true);
+	}
+	
+	TSet<FString> TargetFolders;
     {
         FARFilter Filter;
         Filter.ClassPaths.Add(UMetaDataBakingSettingsDataAsset::StaticClass()->GetClassPathName());
@@ -44,11 +68,19 @@ void UMetaDataIndexerSubsystem::RefreshIndex()
             UE_LOG(LogMetaDataIndexer, Log, TEXT("Adding [%s] to Cache"), *AssetData.GetObjectPathString());
             CachedBakingSettingsDataAssets.Add(
                 TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>(AssetData.GetSoftObjectPath()));
-        
+        	
+        	TargetFolders.Add(AssetData.PackagePath.ToString());
+            UE_LOG(LogMetaDataIndexer, Log, TEXT("Adding [%s] to TargetFolders"),
+            	*AssetData.PackagePath.ToString());
         }
     }
+
+	
+	// This ensures that all unloaded assets on disk are discovered and indexed before we run our filter.
+	AssetRegistry.ScanPathsSynchronous(TargetFolders.Array(), true);
     
     UE_LOG(LogMetaDataIndexer, Log, TEXT("Cached %d assets. Indexing....."), CachedBakingSettingsDataAssets.Num());
+	CachedIndex.Empty();
 
     for(const TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>& Settings : CachedBakingSettingsDataAssets)
     {
@@ -89,16 +121,17 @@ void UMetaDataIndexerSubsystem::GetDirectoryIndex(const FDirectoryPath& Director
 	}
 }
 
-EMetaDataBakingAssetStatus UMetaDataIndexerSubsystem::GetAssetStatus(UObject* Asset) const
+EMetaDataBakingAssetStatus UMetaDataIndexerSubsystem::GetSoftAssetStatus(const FSoftObjectPath& SoftAsset) const
 {
+	
 	// Guard against null assets
-	if (!Asset)
+	if (SoftAsset.IsNull())
 	{
-		return EMetaDataBakingAssetStatus::MDBAS_Empty; 
+		return EMetaDataBakingAssetStatus::MDBAS_NONE; 
 	}
 
 	FMetaDataBakingSettingsAssetIndex Index;
-	Index.Asset = Asset;
+	Index.Asset = SoftAsset;
 
 	// Safely check if Find() returned a valid pointer before dereferencing
 	if (const FMetaDataBakingSettingsAssetIndex* FoundIndex = CachedIndex.Find(Index))
@@ -107,17 +140,18 @@ EMetaDataBakingAssetStatus UMetaDataIndexerSubsystem::GetAssetStatus(UObject* As
 	}
 
 	// Not found in the index at all
-	return EMetaDataBakingAssetStatus::MDBAS_Empty;
+	return EMetaDataBakingAssetStatus::MDBAS_NONE;
 }
 
 void UMetaDataIndexerSubsystem::RefreshDataAssetCache(UMetaDataBakingSettingsDataAsset* DataAsset)
 {
 	FString TargetFolder = FPackageName::GetLongPackagePath(FSoftObjectPath(DataAsset).GetAssetPath().GetPackageName().ToString());
-	
+		
     UE_LOG(LogMetaDataIndexer, Log, TEXT("Searching for assets in [%s]"), *TargetFolder);
-    FARFilter Filter;
+	FARFilter Filter;
     Filter.PackagePaths.Add(FName(TargetFolder));
     Filter.bRecursivePaths = true;
+	
         
     TArray<FAssetData> AssetDataList;
     FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry")
@@ -128,44 +162,94 @@ void UMetaDataIndexerSubsystem::RefreshDataAssetCache(UMetaDataBakingSettingsDat
 
     for(const FAssetData& AssetData : AssetDataList)
 	{
+    	
 	    // Get the class of the asset without loading the asset itself
-	    UClass* AssetClass = AssetData.GetClass();
+	    UClass* AssetClass = AssetData.GetClass(EResolveClass::Yes);
     
+    	UE_LOG(LogMetaDataIndexer, Display, TEXT("[%s] Caching index [%s][%s]"),
+			*GetNameSafe(DataAsset),
+			*AssetData.ToSoftObjectPath().ToString(),
+			( AssetClass ? TEXT("Resolved"): TEXT("UnResolved") ));
+    	
 	    // Check if it implements the interface at the class level
 	    if (AssetClass && AssetClass->ImplementsInterface(UInterface_AssetUserData::StaticClass()))
 	    {
+	    	
+	    	UE_LOG(LogMetaDataIndexer, Display, TEXT("[%s] : [%s] : Is Valid and Implements Asset User Data"),
+				*GetNameSafe(DataAsset),
+				*AssetData.ToSoftObjectPath().ToString());
+	    	
 	        // This is a "Candidate" - it CAN hold user data. 
 	        PotentialCache.Add(TSoftObjectPtr<UObject>(AssetData.ToSoftObjectPath()));
 
 	    	FMetaDataBakingSettingsAssetIndex Index;
 	    	Index.Asset = AssetData.ToSoftObjectPath();
-	    	Index.AssetStatus = EMetaDataBakingAssetStatus::MDBAS_Dirty;
-
-	    	if(!CachedIndex.Contains(Index))
-	    	{
-	    		CachedIndex.Add(Index);
-	    	}
+	    	Index.AssetStatus = EMetaDataBakingAssetStatus::MDBAS_Indexed;
+	    	CachedIndex.Add(Index);
+	    		    	
 	    }
 	}
 
 	DataAsset->AssignCache(PotentialCache);
 	DataAsset->MarkPackageDirty();
-
 }
 
-void UMetaDataIndexerSubsystem::HandleAssetBaked(UObject* Asset, bool bSuccess)
+void UMetaDataIndexerSubsystem::SerialiseIndex()
+{
+	FBufferArchive ToBinary;
+	FObjectAndNameAsStringProxyArchive Ar(ToBinary, false);
+
+	// Manually serialize the number of elements
+	int32 NumElements = CachedIndex.Num();
+	Ar << NumElements;
+
+	// Iterate and serialize each element
+	for (const FMetaDataBakingSettingsAssetIndex& Element : CachedIndex)
+	{
+		// We create a temporary copy to serialize
+		FMetaDataBakingSettingsAssetIndex Temp = Element;
+		Ar << Temp;
+	}
+
+	FFileHelper::SaveArrayToFile(ToBinary, *CacheFile);
+}
+
+void UMetaDataIndexerSubsystem::DeserialiseIndex()
+{
+
+	TArray<uint8> BinaryData;
+	if (FFileHelper::LoadFileToArray(BinaryData, *CacheFile))
+	{
+		FMemoryReader FromBinary(BinaryData, true);
+		FObjectAndNameAsStringProxyArchive Ar(FromBinary, true);
+
+		int32 NumElements = 0;
+		Ar << NumElements;
+
+		CachedIndex.Empty();
+		for (int32 i = 0; i < NumElements; ++i)
+		{
+			FMetaDataBakingSettingsAssetIndex Temp;
+			Ar << Temp;
+			CachedIndex.Add(Temp);
+		}
+	}
+}
+
+void UMetaDataIndexerSubsystem::HandleAssetBaked( const FSoftObjectPath& Asset, bool bSuccess)
 {
 	UE_LOG(LogMetaDataIndexer, Display, TEXT("[%s] Received Asset [%s] Baked [%s]"),
 		*GetNameSafe(this),
-		*GetNameSafe(Asset),
+		*Asset.ToString(),
 		( bSuccess ? TEXT("Successfully"): TEXT("Failed") ));
 
 
 	// Guard against null assets
-	if (!Asset)
+	if (Asset.IsNull())
 	{
 		return; 
 	}
+	
 
 	FMetaDataBakingSettingsAssetIndex Index;
 	Index.Asset = Asset;
@@ -173,21 +257,20 @@ void UMetaDataIndexerSubsystem::HandleAssetBaked(UObject* Asset, bool bSuccess)
 	// Safely check if Find() returned a valid pointer before dereferencing
 	if (FMetaDataBakingSettingsAssetIndex* FoundIndex = CachedIndex.Find(Index))
 	{
-		FoundIndex->AssetStatus = bSuccess ? EMetaDataBakingAssetStatus::MDBAS_Baked : EMetaDataBakingAssetStatus::MDBAS_SavedOnly;
+		UpdateAssetIndexStatus(Asset, bSuccess ? EMetaDataBakingAssetStatus::MDBAS_Baked : EMetaDataBakingAssetStatus::MDBAS_Indexed);
 	}
 	
 }
 
-void UMetaDataIndexerSubsystem::HandleMetaDataExtracted(UObject* Asset,
+void UMetaDataIndexerSubsystem::HandleMetaDataExtracted( const FSoftObjectPath& Asset,
 	FMetaDataExtractionResult MetaDataExtractionResult)
 {
 	UE_LOG(LogMetaDataIndexer, Display, TEXT("[%s] Received Asset [%s] Extracted Traits"),
 		*GetNameSafe(this),
-		*GetNameSafe(Asset));
-
+		*Asset.ToString());
 
 	// Guard against null assets
-	if (!Asset)
+	if (Asset.IsNull())
 	{
 		return; 
 	}
@@ -198,6 +281,32 @@ void UMetaDataIndexerSubsystem::HandleMetaDataExtracted(UObject* Asset,
 	// Safely check if Find() returned a valid pointer before dereferencing
 	if (FMetaDataBakingSettingsAssetIndex* FoundIndex = CachedIndex.Find(Index))
 	{
-		FoundIndex->AssetStatus = !MetaDataExtractionResult.bHasTraits ? EMetaDataBakingAssetStatus::MDBAS_Empty : EMetaDataBakingAssetStatus::MDBAS_Dirty;
+		if(!MetaDataExtractionResult.bHasTraits)
+		{
+			UpdateAssetIndexStatus(Asset, EMetaDataBakingAssetStatus::MDBAS_Empty);
+		}
+		else
+		{
+			UpdateAssetIndexStatus(Asset, EMetaDataBakingAssetStatus::MDBAS_Indexed);
+		}
+	}
+
+}
+
+void UMetaDataIndexerSubsystem::UpdateAssetIndexStatus(const FSoftObjectPath& Asset, EMetaDataBakingAssetStatus Status)
+{
+	// Guard against null assets
+	if (Asset.IsNull())
+	{
+		return; 
+	}
+
+	FMetaDataBakingSettingsAssetIndex Index;
+	Index.Asset = Asset;
+
+	// Safely check if Find() returned a valid pointer before dereferencing
+	if (FMetaDataBakingSettingsAssetIndex* FoundIndex = CachedIndex.Find(Index))
+	{
+		FoundIndex->AssetStatus = Status;
 	}
 }

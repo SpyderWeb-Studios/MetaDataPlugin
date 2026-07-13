@@ -23,9 +23,6 @@ public:
 		bool bClearArray) const override;
 	
 	virtual bool IsEditorOnly() const override;
-	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
-	virtual void GetAssetRegistryTags(FAssetRegistryTagsContext Context) const override;
-	virtual void GetAssetRegistryTagMetadata(TMap<FName, FAssetRegistryTagMetadata>& OutMetadata) const override;
 
 protected:
 

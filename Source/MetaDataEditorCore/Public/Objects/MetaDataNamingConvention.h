@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DataRegistryId.h"
 #include "UObject/Object.h"
 #include "MetaDataNamingConvention.generated.h"
 
@@ -17,6 +18,9 @@ public:
 	// Generates a deterministic, stable Registry ID based on the asset's path and context.
 	UFUNCTION(BlueprintNativeEvent, Category = "Metadata Baking")
 	FName GenerateRegistryKey(const FSoftObjectPath& AssetPath) const;
+
+	UFUNCTION(BlueprintNativeEvent, Category="Metadata Baking")
+	FDataRegistryId GetDataRegistryId(const FDataRegistryType& TargetRegistryType, const FSoftObjectPath& AssetPath) const;
 
 protected:
 

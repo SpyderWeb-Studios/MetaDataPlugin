@@ -6,7 +6,6 @@
 #include <DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h>
 #include <FunctionLibraries/MetaDataEditorFunctionLibrary.h>
 
-#include "FunctionLibraries/MetaDataBakingFunctionLibrary.h"
 #include "Slate/FMetaDataSettingsCustomisation.h"
 #include "Subsystems/MetaDataEditorSubsystem.h"
 #include "Subsystems/MetaDataIndexerSubsystem.h"
@@ -139,7 +138,7 @@ void FMetaDataEditor::ExecuteBakeAll()
 
 	
 	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->RequestDirectoriesBake(DirectoriesToBake);
-	UE_LOG(LogTemp, Display, TEXT("MetadataBaker: Full Project Bake Complete."));
+	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->FlushAllModifiedStorageProviders();
 }
 
 void FMetaDataEditor::ExecuteBakeBaseGameOnly()
@@ -149,6 +148,7 @@ void FMetaDataEditor::ExecuteBakeBaseGameOnly()
 	BaseGameDir.Path = TEXT("/Game");
 	
 	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->RequestDirectoriesBake({BaseGameDir});
+	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->FlushAllModifiedStorageProviders();
 	
 }
 
@@ -156,6 +156,7 @@ void FMetaDataEditor::ExecuteBakeSpecificDLC(FName TargetFolder)
 {
     UE_LOG(LogTemp, Warning, TEXT("Executing Mod Bake for: %s"), *TargetFolder.ToString());
 	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->RequestDirectoriesBake({FDirectoryPath(TargetFolder.ToString())});
+	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->FlushAllModifiedStorageProviders();
 }
 
 
