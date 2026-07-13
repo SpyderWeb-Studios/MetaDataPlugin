@@ -2,15 +2,15 @@
 
 
 #include "Subsystems/MetaDataIndexerSubsystem.h"
-
-#include "JsonObjectConverter.h"
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "AssetRegistry/IAssetRegistry.h"
+#include "Libraries/FCoreMetaDataEditorDelegates.h"
 #include "DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h"
 #include "Engine/AssetManager.h"
-#include "Libraries/FCoreMetaDataEditorDelegates.h"
+
 #include "Serialization/BufferArchive.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
+
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
 
 DEFINE_LOG_CATEGORY(LogMetaDataIndexer);
 
@@ -143,6 +143,18 @@ EMetaDataBakingAssetStatus UMetaDataIndexerSubsystem::GetSoftAssetStatus(const F
 	return EMetaDataBakingAssetStatus::MDBAS_NONE;
 }
 
+TSoftObjectPtr<UMetaDataBakingSettingsDataAsset> UMetaDataIndexerSubsystem::GetBakingSettingForAsset(
+	const FSoftObjectPath& SoftAsset)
+{
+
+	FMetaDataBakingSettingsAssetIndex IndexToFind(SoftAsset);
+	if(FMetaDataBakingSettingsAssetIndex* Found = CachedIndex.Find(SoftAsset))
+	{
+		return Found->OwningBakingSetting;
+	}
+	return nullptr;
+}
+
 void UMetaDataIndexerSubsystem::RefreshDataAssetCache(UMetaDataBakingSettingsDataAsset* DataAsset)
 {
 	FString TargetFolder = FPackageName::GetLongPackagePath(FSoftObjectPath(DataAsset).GetAssetPath().GetPackageName().ToString());
@@ -185,6 +197,7 @@ void UMetaDataIndexerSubsystem::RefreshDataAssetCache(UMetaDataBakingSettingsDat
 	    	FMetaDataBakingSettingsAssetIndex Index;
 	    	Index.Asset = AssetData.ToSoftObjectPath();
 	    	Index.AssetStatus = EMetaDataBakingAssetStatus::MDBAS_Indexed;
+	    	Index.OwningBakingSetting = DataAsset;
 	    	CachedIndex.Add(Index);
 	    		    	
 	    }
@@ -233,6 +246,10 @@ void UMetaDataIndexerSubsystem::DeserialiseIndex()
 			Ar << Temp;
 			CachedIndex.Add(Temp);
 		}
+	}
+	else
+	{
+		// RefreshIndex();
 	}
 }
 

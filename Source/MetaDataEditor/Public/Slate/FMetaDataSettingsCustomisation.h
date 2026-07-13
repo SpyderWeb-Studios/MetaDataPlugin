@@ -27,7 +27,7 @@ inline void FMetaDataSettingsCustomisation::CustomizeDetails(IDetailLayoutBuilde
     
 	TSharedPtr<IPropertyHandle> MapProperty = DetailBuilder.GetProperty("CachedAssets");
     IDetailCategoryBuilder& Category = DetailBuilder.EditCategory("Cache");
-
+    
     // Add in an action button row
     Category.AddCustomRow(FText::FromString("Cache Actions"))
 [
@@ -70,6 +70,7 @@ inline void FMetaDataSettingsCustomisation::CustomizeDetails(IDetailLayoutBuilde
     MapProperty->GetNumChildren(NumChildren);
 
     UMetaDataIndexerSubsystem* MetaDataIndexerSubsystem = GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>();
+    UMetaDataEditorSubsystem* MetaDataCoreEditorSubsystem = GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>();
     check(MetaDataIndexerSubsystem);
     
     for (uint32 i = 0; i < NumChildren; ++i)
@@ -175,8 +176,36 @@ inline void FMetaDataSettingsCustomisation::CustomizeDetails(IDetailLayoutBuilde
         .ButtonStyle(FAppStyle::Get(), "SimpleButton")
         .ContentPadding(0)
         .ToolTipText(FText::FromString("Extracts the Meta Data into the Meta Data Storage Providers"))
-        .OnClicked_Lambda([ElementHandle]() -> FReply
+        .IsEnabled_Lambda([this, ElementHandle]() -> bool
         {
+        
+            FString AssetPathString;
+            FSoftObjectPath SoftAssetPath;
+            if (ElementHandle->GetValueAsFormattedString(AssetPathString) == FPropertyAccess::Success)
+            {
+                SoftAssetPath = FSoftObjectPath(AssetPathString);
+            }
+            
+            // Get the current status of the asset
+            const UMetaDataIndexerSubsystem* Subsystem = GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>();
+            if (!Subsystem) return false;
+
+            // Disable if the asset is Empty
+            return Subsystem->GetSoftAssetStatus(SoftAssetPath) > EMetaDataBakingAssetStatus::MDBAS_Empty;
+        })
+        .OnClicked_Lambda([MetaDataCoreEditorSubsystem, MetaDataIndexerSubsystem, ElementHandle]() -> FReply
+        {
+            FString AssetPathString;
+            FSoftObjectPath SoftAssetPath;
+            if (ElementHandle->GetValueAsFormattedString(AssetPathString) == FPropertyAccess::Success)
+            {
+                SoftAssetPath = FSoftObjectPath(AssetPathString);
+            }
+            
+            MetaDataCoreEditorSubsystem->RequestAssetBake(
+                MetaDataIndexerSubsystem->GetBakingSettingForAsset(SoftAssetPath).LoadSynchronous(),
+                SoftAssetPath);
+            
             return FReply::Handled();
         })
         [

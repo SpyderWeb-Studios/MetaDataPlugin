@@ -3,12 +3,33 @@
 
 #include "Objects/AssetUserData/MetaDataRegistryIdData.h"
 
-void UMetaDataRegistryIdData::AddRegistryId(const FDataRegistryId& RegistryKey)
+void UMetaDataRegistryIdData::SetRegistryIds_Implementation(const TSet<FDataRegistryId>& RegistryIds)
+{
+	AssetRegistryIds = RegistryIds;
+}
+
+void UMetaDataRegistryIdData::AddRegistryId_Implementation(const FDataRegistryId& RegistryKey)
 {
 	AssetRegistryIds.Add(RegistryKey);
 }
 
-void UMetaDataRegistryIdData::SetRegistryIds(const TSet<FDataRegistryId>& RegistryIds)
+void UMetaDataRegistryIdData::GetAllRegistryIds_Implementation(TSet<FDataRegistryId>& OutRegistryIds) const
 {
-	AssetRegistryIds = RegistryIds;
+	OutRegistryIds = AssetRegistryIds;
 }
+
+bool UMetaDataRegistryIdData::GetRegistryIdForType_Implementation(const FDataRegistryType& RegistryType,
+	TSet<FDataRegistryId>& OutRegistryIds) const
+{
+	OutRegistryIds.Empty(AssetRegistryIds.Num());
+	for(const FDataRegistryId& Id : AssetRegistryIds)
+	{
+		if(Id.RegistryType == RegistryType)
+		{
+			OutRegistryIds.Add(Id);
+		}
+	}
+
+	return OutRegistryIds.Num() > 0;
+}
+
