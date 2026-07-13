@@ -135,8 +135,13 @@ void UMetaDataEditorSubsystem::RequestDirectoriesBake(const TArray<FDirectoryPat
     }
 }
 
+void UMetaDataEditorSubsystem::RequestBakerySettingBake(UMetaDataBakingSettingsDataAsset* DataAssetPath) const
+{
+    BakeBakerySetting(DataAssetPath);
+}
+
 void UMetaDataEditorSubsystem::RequestAssetBake(const UMetaDataBakingSettingsDataAsset* BakerySetting,
-    const FSoftObjectPath& Asset) const
+                                                const FSoftObjectPath& Asset) const
 {
     BakeCachedAsset(BakerySetting, TSoftObjectPtr<UObject>(Asset));
 }
@@ -175,13 +180,11 @@ bool UMetaDataEditorSubsystem::BakeBakerySetting(UMetaDataBakingSettingsDataAsse
 
     for(const TSoftObjectPtr<UObject> Asset : BakerySetting->CachedAssets)
     {
-        if(!BakeCachedAsset(BakerySetting, Asset))
-        {
-            return false;
-        }
+        // Not breaking the loop due to a single asset not baking
+        BakeCachedAsset(BakerySetting, Asset));
     }
 
-    return true;
+    return BakerySetting->CachedAssets.Num() > 0;
 }
 
 bool UMetaDataEditorSubsystem::BakeCachedAsset(const UMetaDataBakingSettingsDataAsset* BakerySetting, const TSoftObjectPtr<UObject>& Asset) const

@@ -35,6 +35,8 @@ public:
 	// Simple wrapper for the function library with feedback
 	void RequestDirectoriesBake(const TArray<FDirectoryPath>& DirectoryPaths);
 
+	void RequestBakerySettingBake(UMetaDataBakingSettingsDataAsset* DataAssetPath) const;
+
 	void RequestAssetBake(const UMetaDataBakingSettingsDataAsset* BakerySetting, const FSoftObjectPath& Asset) const; 
 
 protected:

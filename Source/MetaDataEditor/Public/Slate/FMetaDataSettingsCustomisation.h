@@ -11,7 +11,11 @@
 class FMetaDataSettingsCustomisation : public IDetailCustomization {
 public:
 	static TSharedRef<IDetailCustomization> MakeInstance();
+    void OnToggleChanged(ECheckBoxState CheckBoxState);
+    ECheckBoxState IsButtonChecked() const;
+    void OnButtonToggleChanged(ECheckBoxState CheckBoxState);
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
+    bool bToggleState;
 };
 
 inline TSharedRef<IDetailCustomization> FMetaDataSettingsCustomisation::MakeInstance()
@@ -19,47 +23,93 @@ inline TSharedRef<IDetailCustomization> FMetaDataSettingsCustomisation::MakeInst
 	return MakeShared<FMetaDataSettingsCustomisation>();
 }
 
+inline ECheckBoxState FMetaDataSettingsCustomisation::IsButtonChecked() const
+{
+    return bToggleState ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+}
+
+inline void FMetaDataSettingsCustomisation::OnButtonToggleChanged(ECheckBoxState NewState)
+{
+    bToggleState = (NewState == ECheckBoxState::Checked);
+    
+    // Your toggle logic goes here
+}
+
 inline void FMetaDataSettingsCustomisation::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 {
+    TArray<TWeakObjectPtr<UObject>> Objects;
+    DetailBuilder.GetObjectsBeingCustomized(Objects);
+
+    TSoftObjectPtr<UMetaDataBakingSettingsDataAsset> SoftDataAssetPath;
+    
+    if (Objects.Num() > 0 && Objects[0].IsValid())
+    {
+        // Cast it to your specific class
+        TWeakObjectPtr<UObject> ActiveDataAsset = Objects[0];
+
+        if(ActiveDataAsset.IsStale())
+        {
+            return;
+        }
+
+        SoftDataAssetPath = Cast<UMetaDataBakingSettingsDataAsset>(ActiveDataAsset.Get());
+    }
+
+
+    UMetaDataIndexerSubsystem* MetaDataIndexerSubsystem = GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>();
+    UMetaDataEditorSubsystem* MetaDataCoreEditorSubsystem = GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>();
+    check(MetaDataIndexerSubsystem);
+    
+    
+    IDetailCategoryBuilder& BakingCategory = DetailBuilder.EditCategory("Baking");
+
+    BakingCategory.AddCustomRow(FText::FromString("Actions"))
+    .WholeRowContent()
+    [
+        SNew(SBorder)
+        .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+        .Padding(4.0f)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0, 0, 8, 0)
+            [
+                SNew(SButton)
+                .ButtonStyle(FAppStyle::Get(), "PrimaryButton") // Gives it the blue 'Action' look
+                .Text(FText::FromString("Refresh Cache"))
+                .ToolTipText(FText::FromString("Scan folders for new assets"))
+                .OnClicked_Lambda([MetaDataIndexerSubsystem, SoftDataAssetPath]() -> FReply
+                {
+                    MetaDataIndexerSubsystem->RefreshDataAssetCache(SoftDataAssetPath.LoadSynchronous());
+                    return FReply::Handled();
+                })
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SButton)
+                .ButtonStyle(FAppStyle::Get(), "PrimaryButton") // Gives it the blue 'Action' look
+                .Text(FText::FromString("Bake All"))
+                .ToolTipText(FText::FromString("Run the baking process"))
+                .OnClicked_Lambda([MetaDataCoreEditorSubsystem, SoftDataAssetPath]() -> FReply
+                {
+                    MetaDataCoreEditorSubsystem->RequestBakerySettingBake(SoftDataAssetPath.LoadSynchronous());
+                    return FReply::Handled();
+                })
+            ]
+            
+        ]
+    ];
+    TSharedPtr<IPropertyHandle> ExternalBakingSettingProperty = DetailBuilder.GetProperty("ExternalBakingSetting");
+    BakingCategory.AddProperty(ExternalBakingSettingProperty);
+    
     
     DetailBuilder.EditCategory("Routing");
     DetailBuilder.EditCategory("Naming");
     
 	TSharedPtr<IPropertyHandle> MapProperty = DetailBuilder.GetProperty("CachedAssets");
     IDetailCategoryBuilder& Category = DetailBuilder.EditCategory("Cache");
-    
-    // Add in an action button row
-    Category.AddCustomRow(FText::FromString("Cache Actions"))
-[
-    SNew(SHorizontalBox)
-    + SHorizontalBox::Slot()
-    .AutoWidth()
-    .Padding(0, 0, 10, 0)
-    .VAlign(VAlign_Center)
-    [
-        SNew(SButton)
-        .Text(FText::FromString("Refresh All"))
-        .OnClicked_Lambda([]() { /* Logic */ return FReply::Handled(); })
-    ]
-    + SHorizontalBox::Slot()
-    .AutoWidth()
-    .Padding(0, 0, 10, 0)
-    .VAlign(VAlign_Center)
-    [
-        SNew(SButton)
-        .Text(FText::FromString("Clear Cache"))
-        .OnClicked_Lambda([]() { /* Logic */ return FReply::Handled(); })
-    ]
-    + SHorizontalBox::Slot()
-    .AutoWidth()
-    .Padding(0, 0, 10, 0)
-    .VAlign(VAlign_Center)
-    [
-        SNew(SButton)
-        .Text(FText::FromString("Extract From Cache"))
-        .OnClicked_Lambda([]() { /* Logic */ return FReply::Handled(); })
-    ]
-    ];
 
     // Hide the default map view
     Category.AddProperty(MapProperty).Visibility(EVisibility::Collapsed);
@@ -68,10 +118,6 @@ inline void FMetaDataSettingsCustomisation::CustomizeDetails(IDetailLayoutBuilde
     TSharedPtr<IPropertyHandleSet> MapHandle = MapProperty->AsSet();
     uint32 NumChildren = 0;
     MapProperty->GetNumChildren(NumChildren);
-
-    UMetaDataIndexerSubsystem* MetaDataIndexerSubsystem = GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>();
-    UMetaDataEditorSubsystem* MetaDataCoreEditorSubsystem = GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>();
-    check(MetaDataIndexerSubsystem);
     
     for (uint32 i = 0; i < NumChildren; ++i)
     {

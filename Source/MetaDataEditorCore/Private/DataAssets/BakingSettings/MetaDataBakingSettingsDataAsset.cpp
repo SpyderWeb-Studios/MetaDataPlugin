@@ -17,4 +17,14 @@ void UMetaDataBakingSettingsDataAsset::AssignCache(const TSet<TSoftObjectPtr<UOb
 	CachedAssets = Cache;
 }
 
+bool UMetaDataBakingSettingsDataAsset::IsBakingAssetAutoScanning() const
+{
+return ExternalBakingSetting.bAutoScan;
+}
+
+FExternalBakingSetting* UMetaDataBakingSettingsDataAsset::UpdateBakingAssetSetting()
+{
+	return &ExternalBakingSetting;
+}
+
 

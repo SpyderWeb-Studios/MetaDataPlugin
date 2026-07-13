@@ -8,6 +8,7 @@
 #include <Objects/Providers/MetaDataStorageProvider_Base.h>
 
 #include "Libraries/FBakingSettingsAssetIndexer.h"
+#include "Libraries/FExternalBakingSetting.h"
 #include "MetaDataBakingSettingsDataAsset.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMetaDataSettings, Log, Log);
@@ -55,6 +56,10 @@ public:
 
 	void AssignCache(const TSet<TSoftObjectPtr<UObject>>& Cache);
 	
+	
+	bool IsBakingAssetAutoScanning() const;
+	FExternalBakingSetting* UpdateBakingAssetSetting();
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TSet<TSoftObjectPtr<UObject>> CachedAssets;
 	
@@ -65,5 +70,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Routing")
 	TMap<UScriptStruct*, FMetadataProviderArray> TraitRoutingMap;
 
+
+	UPROPERTY(EditDefaultsOnly, Category = "Baking")
+	FExternalBakingSetting ExternalBakingSetting;
 	
 };

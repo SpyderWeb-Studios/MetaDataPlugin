@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
 #include "UObject/AssetRegistryTagsContext.h"
+
+#include "Libraries/FExternalBakingSetting.h"
 #include "Libraries/FBakingSettingsAssetIndexer.h"
 #include "Libraries/FExtractionResult.h"
 
@@ -44,10 +46,10 @@ public:
 	EMetaDataBakingAssetStatus GetSoftAssetStatus(const FSoftObjectPath& SoftAsset) const;
 
 	TSoftObjectPtr<UMetaDataBakingSettingsDataAsset> GetBakingSettingForAsset(const FSoftObjectPath& SoftAsset);
-
+	
+	void RefreshDataAssetCache(UMetaDataBakingSettingsDataAsset* DataAsset);
 protected:
 
-	void RefreshDataAssetCache(UMetaDataBakingSettingsDataAsset* DataAsset);
 
 	void SerialiseIndex();
 	void DeserialiseIndex();
