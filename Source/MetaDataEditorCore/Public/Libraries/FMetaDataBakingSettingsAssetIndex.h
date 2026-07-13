@@ -5,6 +5,8 @@
 #include "FMetaDataBakingSettingsAssetIndex.generated.h"
 
 
+class UMetaDataBakingSettingsDataAsset;
+
 USTRUCT(BlueprintType)
 struct FMetaDataBakingSettingsAssetIndex
 {
@@ -12,6 +14,9 @@ struct FMetaDataBakingSettingsAssetIndex
 
 	UPROPERTY(VisibleAnywhere)
 	TSoftObjectPtr<UObject> Asset;
+
+	UPROPERTY(VisibleAnywhere)
+	TSoftObjectPtr<UMetaDataBakingSettingsDataAsset> OwningBakingSetting;
 
 	UPROPERTY(VisibleAnywhere)
 	EMetaDataBakingAssetStatus AssetStatus;
@@ -36,5 +41,14 @@ struct FMetaDataBakingSettingsAssetIndex
 		Ar << Index.Asset;
 		Ar << Index.AssetStatus;
 		return Ar;
+	}
+
+	FMetaDataBakingSettingsAssetIndex(): AssetStatus(EMetaDataBakingAssetStatus::MDBAS_NONE)
+	{
+	}
+
+	FMetaDataBakingSettingsAssetIndex(const FSoftObjectPath& ReferenceAsset): AssetStatus(EMetaDataBakingAssetStatus::MDBAS_NONE)
+	{
+		Asset = ReferenceAsset;
 	}
 };

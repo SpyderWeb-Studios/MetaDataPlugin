@@ -138,7 +138,6 @@ void FMetaDataEditor::ExecuteBakeAll()
 
 	
 	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->RequestDirectoriesBake(DirectoriesToBake);
-	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->FlushAllModifiedStorageProviders();
 }
 
 void FMetaDataEditor::ExecuteBakeBaseGameOnly()
@@ -148,7 +147,6 @@ void FMetaDataEditor::ExecuteBakeBaseGameOnly()
 	BaseGameDir.Path = TEXT("/Game");
 	
 	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->RequestDirectoriesBake({BaseGameDir});
-	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->FlushAllModifiedStorageProviders();
 	
 }
 
@@ -156,7 +154,6 @@ void FMetaDataEditor::ExecuteBakeSpecificDLC(FName TargetFolder)
 {
     UE_LOG(LogTemp, Warning, TEXT("Executing Mod Bake for: %s"), *TargetFolder.ToString());
 	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->RequestDirectoriesBake({FDirectoryPath(TargetFolder.ToString())});
-	GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>()->FlushAllModifiedStorageProviders();
 }
 
 

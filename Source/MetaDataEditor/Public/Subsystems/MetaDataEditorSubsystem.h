@@ -9,6 +9,7 @@
 
 #include "MetaDataEditorSubsystem.generated.h"
 
+class UMetaDataIndexerSubsystem;
 struct FMetaDataTrait_Base;
 class UMetaDataBakingSettingsDataAsset;
 class UMetaDataStorageProviderInterface;
@@ -23,7 +24,7 @@ UCLASS()
 class METADATAEDITOR_API UMetaDataEditorSubsystem : public UEditorSubsystem
 {
 	GENERATED_BODY()
-	
+	friend struct FMetaScopedBakeSession;
 public:
 	UMetaDataEditorSubsystem();
 
@@ -33,17 +34,17 @@ public:
 
 	// Simple wrapper for the function library with feedback
 	void RequestDirectoriesBake(const TArray<FDirectoryPath>& DirectoryPaths);
-	
-	
+
+	void RequestAssetBake(const UMetaDataBakingSettingsDataAsset* BakerySetting, const FSoftObjectPath& Asset) const; 
+
 protected:
+	bool BakeDirectory(const FDirectoryPath& Directory) const;
 
-	void BakeDirectory(const FDirectoryPath& Directory);
+	bool BakeBakerySetting(UMetaDataBakingSettingsDataAsset* BakerySetting) const;
 
-	bool BakeBakerySetting(UMetaDataBakingSettingsDataAsset* BakerySetting);
-
-	bool BakeCachedAsset(const UMetaDataBakingSettingsDataAsset* BakerySetting, const TSoftObjectPtr<UObject>& Asset);
+	bool BakeCachedAsset(const UMetaDataBakingSettingsDataAsset* BakerySetting, const TSoftObjectPtr<UObject>& Asset) const;
 	
-	bool ExtractAssetTraits(const TSoftObjectPtr<>& Asset, TArray<TInstancedStruct<FMetaDataTrait_Base>>& OutTraits);
+	bool ExtractAssetTraits(const TSoftObjectPtr<>& Asset, TArray<TInstancedStruct<FMetaDataTrait_Base>>& OutTraits) const;
 	
 	UPROPERTY(Transient) // Use Transient so it doesn't serialize the reference itself
 	TSet<TObjectPtr<UObject>> ModifiedStorageProviders;
@@ -52,5 +53,9 @@ private:
 
 	// todo : Scoped Baking Session for automatic flush detection
 	int64 _BakeSessionDepth;
+	bool _bBakeCancelled;
+
+	void BeginBakeSession();
+	void EndBakeSession();
 	
 };

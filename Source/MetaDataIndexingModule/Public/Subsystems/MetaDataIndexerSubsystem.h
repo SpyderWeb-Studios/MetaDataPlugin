@@ -4,10 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
-#include "Framework/Notifications/NotificationManager.h"
 #include "UObject/AssetRegistryTagsContext.h"
 #include "Libraries/FBakingSettingsAssetIndexer.h"
 #include "Libraries/FExtractionResult.h"
+
+#include "Framework/Notifications/NotificationManager.h"
 #include "MetaDataIndexerSubsystem.generated.h"
 
 /**
@@ -41,6 +42,8 @@ public:
 	void GetDirectoryIndex(const FDirectoryPath& DirectoryPath, TSet<TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>>& OutIndex);
 
 	EMetaDataBakingAssetStatus GetSoftAssetStatus(const FSoftObjectPath& SoftAsset) const;
+
+	TSoftObjectPtr<UMetaDataBakingSettingsDataAsset> GetBakingSettingForAsset(const FSoftObjectPath& SoftAsset);
 
 protected:
 

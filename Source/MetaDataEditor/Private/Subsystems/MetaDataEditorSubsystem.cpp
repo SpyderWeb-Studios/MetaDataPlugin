@@ -14,6 +14,7 @@
 #include "GenericPlatform/GenericPlatformApplicationMisc.h"
 #include "Interfaces/MetaDataExportInterface.h"
 #include "Libraries/FCoreMetaDataEditorDelegates.h"
+#include "Libraries/FMetaScopedBakeSession.h"
 #include "Objects/AssetUserData/MetaDataRegistryIdData.h"
 #include "Subsystems/MetaDataIndexerSubsystem.h"
 
@@ -57,6 +58,8 @@ void UMetaDataEditorSubsystem::FlushAllModifiedStorageProviders()
 
 void UMetaDataEditorSubsystem::RequestDirectoriesBake(const TArray<FDirectoryPath>& DirectoryPaths)
 {
+    FMetaScopedBakeSession MultiDirectorySession;
+    
     // Create a shared flag to track cancellation safely within the lambda
     TSharedPtr<bool> bIsCanceled = MakeShared<bool>(false);
 
@@ -103,7 +106,11 @@ void UMetaDataEditorSubsystem::RequestDirectoriesBake(const TArray<FDirectoryPat
             BakingNotify->SetSubText(FText::FromString(FString::Printf(TEXT("Baking: %s"), *Dir.Path)));
         }
 
-        BakeDirectory(Dir);
+        if(!BakeDirectory(Dir))
+        {
+            Transaction.Cancel();
+            break;
+        }
 
         // This forces Unreal to momentarily process Slate inputs (like our Cancel click) 
         // before starting the next heavy directory iteration.
@@ -128,20 +135,35 @@ void UMetaDataEditorSubsystem::RequestDirectoriesBake(const TArray<FDirectoryPat
     }
 }
 
-void UMetaDataEditorSubsystem::BakeDirectory(const FDirectoryPath& Directory)
+void UMetaDataEditorSubsystem::RequestAssetBake(const UMetaDataBakingSettingsDataAsset* BakerySetting,
+    const FSoftObjectPath& Asset) const
 {
+    BakeCachedAsset(BakerySetting, TSoftObjectPtr<UObject>(Asset));
+}
+
+bool UMetaDataEditorSubsystem::BakeDirectory(const FDirectoryPath& Directory) const
+{
+    FMetaScopedBakeSession DirectorySession;
+
     UE_LOG(LogMetaDataEditorSubsystem, Display, TEXT("Baking Directory [%s]"), *Directory.Path);
     TSet<TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>> Settings;
     GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>()->GetDirectoryIndex(Directory, Settings);
 
     for(const TSoftObjectPtr<UMetaDataBakingSettingsDataAsset> Setting : Settings)
     {
-        BakeBakerySetting(Setting.LoadSynchronous());
+        if(!BakeBakerySetting(Setting.LoadSynchronous()))
+        {
+            return false;
+        }
     }
+
+    return true;
 }
 
-bool UMetaDataEditorSubsystem::BakeBakerySetting(UMetaDataBakingSettingsDataAsset* BakerySetting)
+bool UMetaDataEditorSubsystem::BakeBakerySetting(UMetaDataBakingSettingsDataAsset* BakerySetting) const
 {
+    FMetaScopedBakeSession BakerySession;
+
     // Clear the Provider Caches
     for(const auto& TraitRoute : BakerySetting->GetTraitRoutingMap())
     {
@@ -150,17 +172,22 @@ bool UMetaDataEditorSubsystem::BakeBakerySetting(UMetaDataBakingSettingsDataAsse
             IMetaDataStorageProviderInterface::Execute_ClearCache(Provider.Provider);
         }
     }
-    
+
     for(const TSoftObjectPtr<UObject> Asset : BakerySetting->CachedAssets)
-    {    
-        BakeCachedAsset(BakerySetting, Asset);
+    {
+        if(!BakeCachedAsset(BakerySetting, Asset))
+        {
+            return false;
+        }
     }
 
     return true;
 }
 
-bool UMetaDataEditorSubsystem::BakeCachedAsset(const UMetaDataBakingSettingsDataAsset* BakerySetting, const TSoftObjectPtr<UObject>& Asset)
+bool UMetaDataEditorSubsystem::BakeCachedAsset(const UMetaDataBakingSettingsDataAsset* BakerySetting, const TSoftObjectPtr<UObject>& Asset) const
 {
+
+    FMetaScopedBakeSession AssetSession;
 
     UE_LOG(LogMetaDataEditorSubsystem, Log, TEXT("MetaData Baker : Baking [%s]"), *Asset.ToString());
     
@@ -168,6 +195,12 @@ bool UMetaDataEditorSubsystem::BakeCachedAsset(const UMetaDataBakingSettingsData
     {
     
         UE_LOG(LogMetaDataEditorSubsystem, Log, TEXT("MetaData Baker : [%s] is Null"), *Asset.ToString());
+        return false;
+    }
+
+    if(GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>()->GetSoftAssetStatus(Asset.ToSoftObjectPath()) < EMetaDataBakingAssetStatus::MDBAS_Indexed)
+    {
+        UE_LOG(LogMetaDataEditorSubsystem, Log, TEXT("MetaData Baker : [%s] has not been Indexed"), *Asset.ToString());
         return false;
     }
 
@@ -276,8 +309,8 @@ bool UMetaDataEditorSubsystem::BakeCachedAsset(const UMetaDataBakingSettingsData
                         *GetNameSafe(this),
                         *RegistryKey.ToString(),
                         *Asset.ToString());
-                    
-                    MetaDataRegistryIdData->AddRegistryId(RegistryKey);
+
+                    IMetaDataRegistryDataInterface::Execute_AddRegistryId(MetaDataRegistryIdData, RegistryKey);
                 }
 
                 if (MetaDataEditorSubsystem)
@@ -303,9 +336,9 @@ bool UMetaDataEditorSubsystem::BakeCachedAsset(const UMetaDataBakingSettingsData
 }
 
 bool UMetaDataEditorSubsystem::ExtractAssetTraits(const TSoftObjectPtr<UObject>& Asset,
-    TArray<TInstancedStruct<FMetaDataTrait_Base>>& OutTraits)
+    TArray<TInstancedStruct<FMetaDataTrait_Base>>& OutTraits) const
 {
-    IInterface_AssetUserData* MetadataInterface = Cast<IInterface_AssetUserData>(Asset.LoadSynchronous());
+    const IInterface_AssetUserData* MetadataInterface = Cast<IInterface_AssetUserData>(Asset.LoadSynchronous());
     
     // If the saved object is completely unrelated to your trait pipeline, exit cleanly
     if (!MetadataInterface)
@@ -332,7 +365,7 @@ bool UMetaDataEditorSubsystem::ExtractAssetTraits(const TSoftObjectPtr<UObject>&
 
     bool bFoundValidData = false;
 
-    for (UAssetUserData* UserData : *MetaData)
+    for (const UAssetUserData* UserData : *MetaData)
     {
         if (UserData && UserData->Implements<UMetaDataExportInterface>())
         {
@@ -348,5 +381,59 @@ bool UMetaDataEditorSubsystem::ExtractAssetTraits(const TSoftObjectPtr<UObject>&
 
     FCoreMetaDataEditorDelegates::OnMetaDataExtracted.Broadcast(Asset.ToSoftObjectPath(), Result);
     return bFoundValidData;
+}
+
+void UMetaDataEditorSubsystem::BeginBakeSession()
+{
+    if(_BakeSessionDepth == 0)
+    {
+        
+        UE_LOG(LogTemp, Display, TEXT("Metadata Baker: Bake Session Started"));
+        _bBakeCancelled = false;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("Metadata Baker: Bake Session Started with depth [%lld]"), _BakeSessionDepth);
+    _BakeSessionDepth++;
+
+    
+}
+
+void UMetaDataEditorSubsystem::EndBakeSession()
+{
+    _BakeSessionDepth--;
+    UE_LOG(LogTemp, Display, TEXT("Metadata Baker: Bake Session Ended with depth [%lld]"), _BakeSessionDepth);
+    if(_BakeSessionDepth == 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("Metadata Baker: Bake Session Completed"));
+        if(!_bBakeCancelled)
+        {
+            TSet<TObjectPtr<UObject>> CachedModifiedStorageProviders = ModifiedStorageProviders;
+            FlushAllModifiedStorageProviders();
+
+            // Clear the cache from modified providers
+            for (UObject* ProviderObj : CachedModifiedStorageProviders)
+            {
+                if (!IsValid(ProviderObj))
+                {
+                    UE_LOG(LogMetaDataEditorSubsystem, Warning, TEXT("Modified Provider [%s] is not valid"), *GetNameSafe(ProviderObj));
+                    continue;
+                }
+
+                if(!ProviderObj->Implements<UMetaDataStorageProviderInterface>())
+                {
+                    UE_LOG(LogMetaDataEditorSubsystem, Warning, TEXT("Modified Provider [%s] does not implement IMetaDataStorageProviderInterface"), *GetNameSafe(ProviderObj));
+                    continue;
+                }
+        
+                IMetaDataStorageProviderInterface::Execute_ClearCache(ProviderObj);
+            }
+            
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("MetadataBaker: Bake session was canceled. Bypassing flush."));
+        }
+    }
+    
 }
 

@@ -11,7 +11,7 @@
  * Struct that holds the basic meta data about an asset
  */
 USTRUCT(BlueprintType)
-struct FMetaDataTrait_Base
+struct FMetaDataTrait_Base : public FTableRowBase
 {
 	GENERATED_BODY()
 	
