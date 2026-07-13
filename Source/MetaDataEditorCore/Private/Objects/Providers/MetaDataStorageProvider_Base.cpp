@@ -3,14 +3,20 @@
 
 #include "Objects/Providers/MetaDataStorageProvider_Base.h"
 
+
 DEFINE_LOG_CATEGORY(LogMetaDataStorageProvider)
+
+void UMetaDataStorageProvider_Base::ClearCache_Implementation()
+{
+	IMetaDataStorageProviderInterface::ClearCache_Implementation();
+}
 
 bool UMetaDataStorageProvider_Base::ValidateTarget_Implementation(const UScriptStruct* TraitType) const
 {
 	return false;
 }
 
-bool UMetaDataStorageProvider_Base::ProcessMetadata_Implementation(const FName& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset)
+bool UMetaDataStorageProvider_Base::ProcessMetadata_Implementation(const FDataRegistryId& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset)
 {
 	return false;
 }

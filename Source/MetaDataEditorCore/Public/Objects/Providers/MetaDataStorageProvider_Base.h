@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DataRegistryId.h"
 #include "UObject/Object.h"
 #include "Interfaces/MetaDataStorageProviderInterface.h"
 #include "MetaDataStorageProvider_Base.generated.h"
@@ -17,6 +18,10 @@ class METADATAEDITORCORE_API UMetaDataStorageProvider_Base : public UObject, pub
 {
 	GENERATED_BODY()
 	
+public:
+
+	virtual void ClearCache_Implementation() override;
+	
 	virtual bool ValidateTarget_Implementation(const UScriptStruct* TraitType) const override;
 
 	/**
@@ -24,7 +29,7 @@ class METADATAEDITORCORE_API UMetaDataStorageProvider_Base : public UObject, pub
 	 * Passed as a const reference to ensure providers remain stateless.
 	 */
 	
-	virtual bool ProcessMetadata_Implementation(const FName& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset) override;
+	virtual bool ProcessMetadata_Implementation(const FDataRegistryId& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset) override;
 
 	/**
 	 * Called after all traits are processed. Used to call MarkPackageDirty(),
@@ -33,5 +38,12 @@ class METADATAEDITORCORE_API UMetaDataStorageProvider_Base : public UObject, pub
 	
 	virtual void Flush_Implementation() override;
 
+	virtual FDataRegistryType GetDataRegistryType_Implementation() const override {return RegistryType;}
+
+protected:
+
+	UPROPERTY(EditDefaultsOnly)
+	FDataRegistryType RegistryType;
+	
 };
 

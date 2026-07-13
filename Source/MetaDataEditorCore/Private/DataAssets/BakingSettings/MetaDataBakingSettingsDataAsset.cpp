@@ -12,7 +12,7 @@ FPrimaryAssetId UMetaDataBakingSettingsDataAsset::GetPrimaryAssetId() const
 	return FPrimaryAssetId("MetaDataBakingSettings", GetFName());
 }
 
-void UMetaDataBakingSettingsDataAsset::AssignCache(TSet<TSoftObjectPtr<UObject>> Cache)
+void UMetaDataBakingSettingsDataAsset::AssignCache(const TSet<TSoftObjectPtr<UObject>>& Cache)
 {
 	CachedAssets = Cache;
 }

@@ -24,7 +24,7 @@ public:
 	 * Passed as a const reference to ensure providers remain stateless.
 	 */
 
-	virtual bool ProcessMetadata_Implementation(const FName& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset) override;
+	virtual bool ProcessMetadata_Implementation(const FDataRegistryId& RegistryKey, const TInstancedStruct<FMetaDataTrait_Base>& Payload, const TSoftObjectPtr<UObject>& UnderlyingAsset) override;
 
 	/**
 	 * Called after all traits are processed. Used to call MarkPackageDirty(),
@@ -33,12 +33,14 @@ public:
 
 	virtual void Flush_Implementation() override;
 
+	virtual void ClearCache_Implementation() override;
+
 protected:
 
 	UPROPERTY(EditDefaultsOnly)
 	TSoftObjectPtr<UDataTable> TargetDataTable;
 
 	UPROPERTY(VisibleAnywhere)
-	TMap<FName, FMetaDataRegistryItem> CachedRows;
+	TMap<FDataRegistryId, FMetaDataRegistryItem> CachedRows;
 
 };

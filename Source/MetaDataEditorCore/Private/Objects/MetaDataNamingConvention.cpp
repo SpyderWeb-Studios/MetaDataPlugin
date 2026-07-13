@@ -20,3 +20,18 @@ FName UMetaDataNamingConvention::GenerateRegistryKey_Implementation(const FSoftO
 
 	return FName(*FinalKey);
 }
+
+FDataRegistryId UMetaDataNamingConvention::GetDataRegistryId_Implementation(const FDataRegistryType& TargetRegistryType, const FSoftObjectPath& AssetPath) const
+{
+	// Get deterministic FName (The Row Name) using the function
+	FName ItemName = GenerateRegistryKey(AssetPath);
+
+	// Validate that a Registry Type has been assigned to prevent silent failures
+	if (!TargetRegistryType.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MetaDataNamingConvention: TargetRegistryType is invalid! Ensure you have set a Registry Type in your Naming Convention asset for %s"), *AssetPath.ToString());
+	}
+
+	// Combine them into a standardized Data Registry ID
+	return FDataRegistryId(TargetRegistryType, ItemName);
+}

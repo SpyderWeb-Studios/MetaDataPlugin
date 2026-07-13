@@ -14,10 +14,13 @@ UMetaDataAssetUserData::UMetaDataAssetUserData()
 void UMetaDataAssetUserData::ExportTraits_Implementation(TArray<TInstancedStruct<FMetaDataTrait_Base>>& OutTraits,
                                                          bool bClearArray) const
 {
+	UE_LOG(LogTemp, Log, TEXT("Exporting [%d] Entries from [%s]"), MetaData.Num(), *GetNameSafe(GetOuter()));
+	
 	if(bClearArray)
 	{
 		OutTraits.Empty();
 	}
+	
 	OutTraits.Append(MetaData);
 	
 }
@@ -53,25 +56,4 @@ bool UMetaDataAssetUserData::IsEditorOnly() const
 	return bEditorOnly;
 }
 
-void UMetaDataAssetUserData::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
-{
-	Super::GetAssetRegistryTags(OutTags);
-
-	// Add your tag
-	FAssetRegistryTag NewTag(FName("HasMetaData"), TEXT("True"), FAssetRegistryTag::TT_Alphabetical);
-	OutTags.Add(NewTag);
-}
-
-void UMetaDataAssetUserData::GetAssetRegistryTags(FAssetRegistryTagsContext Context) const
-{
-
-	Super::GetAssetRegistryTags(Context);
-	FAssetRegistryTag NewTag(FName("HasMetaData"), TEXT("True"), FAssetRegistryTag::TT_Alphabetical);
-	Context.AddTag(NewTag);
-}
-
-void UMetaDataAssetUserData::GetAssetRegistryTagMetadata(TMap<FName, FAssetRegistryTagMetadata>& OutMetadata) const
-{
-	Super::GetAssetRegistryTagMetadata(OutMetadata);
-}
 

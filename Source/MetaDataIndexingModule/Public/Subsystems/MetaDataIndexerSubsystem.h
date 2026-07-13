@@ -33,26 +33,35 @@ public:
 
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
+	
 
 	void RefreshIndex();
 
 	void GetDirectoryIndex(const FDirectoryPath& DirectoryPath, TSet<TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>>& OutIndex);
 
-	EMetaDataBakingAssetStatus GetAssetStatus(UObject* Asset) const;
+	EMetaDataBakingAssetStatus GetSoftAssetStatus(const FSoftObjectPath& SoftAsset) const;
 
 protected:
 
 	void RefreshDataAssetCache(UMetaDataBakingSettingsDataAsset* DataAsset);
+
+	void SerialiseIndex();
+	void DeserialiseIndex();
 	
-	void HandleAssetBaked(UObject* Asset, bool bSuccess);
-	void HandleMetaDataExtracted(UObject* Object, FMetaDataExtractionResult MetaDataExtractionResult);
-
-
-
 	
+	void HandleAssetBaked( const FSoftObjectPath&, bool bSuccess);
+	void HandleMetaDataExtracted( const FSoftObjectPath&, FMetaDataExtractionResult MetaDataExtractionResult);
 
+
+	void UpdateAssetIndexStatus(const FSoftObjectPath& Asset, EMetaDataBakingAssetStatus Status);
+	
 	TSet<TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>> CachedBakingSettingsDataAssets;
 
 	TSet<FMetaDataBakingSettingsAssetIndex> CachedIndex;
 
+private:
+
+	FString CacheFile;
+	
 };

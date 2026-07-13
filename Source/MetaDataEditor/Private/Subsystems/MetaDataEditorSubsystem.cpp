@@ -6,7 +6,6 @@
 #include "JsonObjectConverter.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h"
-#include "FunctionLibraries/MetaDataBakingFunctionLibrary.h"
 #include "Interfaces/MetaDataStorageProviderInterface.h"
 #include "UObject/ObjectSaveContext.h"
 #include "Libraries/FMetaDataRegistryItem.h"
@@ -15,8 +14,8 @@
 #include "GenericPlatform/GenericPlatformApplicationMisc.h"
 #include "Interfaces/MetaDataExportInterface.h"
 #include "Libraries/FCoreMetaDataEditorDelegates.h"
+#include "Objects/AssetUserData/MetaDataRegistryIdData.h"
 #include "Subsystems/MetaDataIndexerSubsystem.h"
-#include "Widgets/Notifications/SProgressBar.h"
 
 DEFINE_LOG_CATEGORY(LogMetaDataEditorSubsystem);
 
@@ -32,6 +31,8 @@ void UMetaDataEditorSubsystem::MarkProviderModified(UObject* StorageProviderInte
 
 void UMetaDataEditorSubsystem::FlushAllModifiedStorageProviders()
 {
+    FScopedTransaction FlushStorage(FText::FromString("Flush Modified Storage"));
+    
     for (UObject* ProviderObj : ModifiedStorageProviders)
     {
         if (!IsValid(ProviderObj))
@@ -129,8 +130,6 @@ void UMetaDataEditorSubsystem::RequestDirectoriesBake(const TArray<FDirectoryPat
 
 void UMetaDataEditorSubsystem::BakeDirectory(const FDirectoryPath& Directory)
 {
-
-
     UE_LOG(LogMetaDataEditorSubsystem, Display, TEXT("Baking Directory [%s]"), *Directory.Path);
     TSet<TSoftObjectPtr<UMetaDataBakingSettingsDataAsset>> Settings;
     GEditor->GetEditorSubsystem<UMetaDataIndexerSubsystem>()->GetDirectoryIndex(Directory, Settings);
@@ -143,8 +142,17 @@ void UMetaDataEditorSubsystem::BakeDirectory(const FDirectoryPath& Directory)
 
 bool UMetaDataEditorSubsystem::BakeBakerySetting(UMetaDataBakingSettingsDataAsset* BakerySetting)
 {
-    for(const TSoftObjectPtr<UObject> Asset : BakerySetting->CachedAssets)
+    // Clear the Provider Caches
+    for(const auto& TraitRoute : BakerySetting->GetTraitRoutingMap())
     {
+        for(const FMetaDataStorageProviderEntry& Provider : TraitRoute.Value.ProviderArray)
+        {
+            IMetaDataStorageProviderInterface::Execute_ClearCache(Provider.Provider);
+        }
+    }
+    
+    for(const TSoftObjectPtr<UObject> Asset : BakerySetting->CachedAssets)
+    {    
         BakeCachedAsset(BakerySetting, Asset);
     }
 
@@ -153,45 +161,69 @@ bool UMetaDataEditorSubsystem::BakeBakerySetting(UMetaDataBakingSettingsDataAsse
 
 bool UMetaDataEditorSubsystem::BakeCachedAsset(const UMetaDataBakingSettingsDataAsset* BakerySetting, const TSoftObjectPtr<UObject>& Asset)
 {
-    if (!Asset)
+
+    UE_LOG(LogMetaDataEditorSubsystem, Log, TEXT("MetaData Baker : Baking [%s]"), *Asset.ToString());
+    
+    if (Asset.IsNull())
     {
+    
+        UE_LOG(LogMetaDataEditorSubsystem, Log, TEXT("MetaData Baker : [%s] is Null"), *Asset.ToString());
         return false;
     }
 
     // Validate the injected parameter
     if (!IsValid(BakerySetting))
     {
-        UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetadataBaker: Invalid Baking Settings provided for Asset: %s"), *Asset->GetName());
+        UE_LOG(LogMetaDataEditorSubsystem, Warning, TEXT("MetadataBaker: Invalid Baking Settings provided for Asset: %s"), *Asset->GetName());
         return false;
     }
 
-    // Ensure the designer selected a naming convention in the settings
-    if (!BakerySetting->GetNamingConvention())
-    {
-        UE_LOG(LogMetaDataBakingLibrary, Error, TEXT("MetaData Baker: No Naming Convention configured in Settings Asset [%s]"), *BakerySetting->GetName());
-        return false;
-    }
 
     // Extract Traits using the new helper
     TArray<TInstancedStruct<FMetaDataTrait_Base>> ExtractedTraits;
     if (!ExtractAssetTraits(Asset, ExtractedTraits))
     {
         // Extraction failed or had no relevant user data
+        
+        UE_LOG(LogMetaDataEditorSubsystem, Log, TEXT("MetaData Baker : [%s] Extraction Failed"), *Asset.ToString());
         return false;
     }
 
-    UE_LOG(LogMetaDataBakingLibrary, Log,
+    UE_LOG(LogMetaDataEditorSubsystem, Log,
         TEXT("MetaData Baker: [%s] Extracted [%d] Meta Data Entries"),
         *BakerySetting->GetName(),
         ExtractedTraits.Num());
 
-    // Process Data
-    FName RegistryKey = BakerySetting->GetNamingConvention()->GenerateRegistryKey(Asset->GetPathName()); 
     UMetaDataEditorSubsystem* MetaDataEditorSubsystem = GEditor->GetEditorSubsystem<UMetaDataEditorSubsystem>();
     bool bBakeSucceeded = true;
     
+    // Stamp the Meta Data Registry Id User Data object if not already on there
+    
+    IInterface_AssetUserData* Interface_AssetUserData = Cast<IInterface_AssetUserData>(Asset.LoadSynchronous());
+    check(Interface_AssetUserData);
+
+    UMetaDataRegistryIdData* MetaDataRegistryIdData = nullptr;
+    
+    if(Interface_AssetUserData->HasAssetUserDataOfClass(UMetaDataRegistryIdData::StaticClass()))
+    {
+        MetaDataRegistryIdData = Cast<UMetaDataRegistryIdData>(Interface_AssetUserData->GetAssetUserDataOfClass(UMetaDataRegistryIdData::StaticClass()));
+        MetaDataRegistryIdData->AssetRegistryIds.Empty();
+    }
+    else
+    {
+        
+        MetaDataRegistryIdData = NewObject<UMetaDataRegistryIdData>();
+        Interface_AssetUserData->AddAssetUserData(MetaDataRegistryIdData);
+    }
+    
+    
     for (const TInstancedStruct<FMetaDataTrait_Base>& Trait : ExtractedTraits)
     {
+        UE_LOG(LogMetaDataEditorSubsystem, Log,
+            TEXT("MetaData Baker: Processing [%s] on [%s]"),
+            *Trait.GetScriptStruct()->GetFName().ToString(),
+            *Asset.ToString());
+        
         if (!Trait.IsValid()) 
         {
             continue;
@@ -202,38 +234,85 @@ bool UMetaDataEditorSubsystem::BakeCachedAsset(const UMetaDataBakingSettingsData
 
         // Look up the Struct type in your Settings Map
         FMetadataProviderArray TargetGroup = BakerySetting->GetTraitProviders(TraitType);
+        UE_LOG(LogMetaDataEditorSubsystem, Display,
+            TEXT("MetaData Baker: [%d] Trait Providers"), TargetGroup.ProviderArray.Num());
+
         
         // Iterate through the array of providers and write
-        for (UMetaDataStorageProvider_Base* Provider : TargetGroup.ProviderArray)
+        for (const FMetaDataStorageProviderEntry& Provider : TargetGroup.ProviderArray)
         {
-            if (Provider)
+            UE_LOG(LogMetaDataEditorSubsystem, Log,
+                TEXT("MetaData Baker: Processing [%s] with [%s]"),
+                *Trait.GetScriptStruct()->GetFName().ToString(),
+                *GetNameSafe(Provider.Provider));
+        
+            
+            // Ensure the designer selected a naming convention in the settings
+            if (!Provider.NamingConvention)
             {
+                UE_LOG(LogMetaDataEditorSubsystem, Error, TEXT("MetaData Baker: No Naming Convention configured in Settings Asset [%s]"), *BakerySetting->GetName());
+                return false;
+            }
+            
+            // Process Data
+            FDataRegistryId RegistryKey = Provider.NamingConvention->GetDataRegistryId(
+            IMetaDataStorageProviderInterface::Execute_GetDataRegistryType(Provider.Provider),
+            Asset->GetPathName()); 
+            
+            if (IsValid(Provider.Provider))
+            {
+                UE_LOG(LogMetaDataEditorSubsystem, Log, TEXT("[%s][%s] Processing [%s]"),
+                    *GetNameSafe(this),
+                    *GetNameSafe(Provider.Provider),
+                    *Asset.ToString());
                 // Hand the payload to the resolved provider 
-                if (!IMetaDataStorageProviderInterface::Execute_ProcessMetadata(Provider, RegistryKey, Trait, Asset)) 
+                if (!IMetaDataStorageProviderInterface::Execute_ProcessMetadata(Provider.Provider, RegistryKey, Trait, Asset)) 
                 {
                     bBakeSucceeded = false;
+                }
+                else
+                {
+                    UE_LOG(LogMetaDataEditorSubsystem, Log, TEXT("[%s] adding [%s] to [%s]"),
+                        *GetNameSafe(this),
+                        *RegistryKey.ToString(),
+                        *Asset.ToString());
+                    
+                    MetaDataRegistryIdData->AddRegistryId(RegistryKey);
                 }
 
                 if (MetaDataEditorSubsystem)
                 {
-                    MetaDataEditorSubsystem->MarkProviderModified(Provider);
+                    MetaDataEditorSubsystem->MarkProviderModified(Provider.Provider);
                 }
             }
+
+            else
+            {
+                UE_LOG(LogMetaDataEditorSubsystem, Error,
+                    TEXT("MetaData Baker: Failed to bake [%s][%s] -> Invalid Provider"),
+                    *Asset.ToString(),
+                    *Trait.GetScriptStruct()->GetFName().ToString())
+            }
+        
         }
     }
+    
 
-    FCoreMetaDataEditorDelegates::OnAssetBaked.Broadcast(Asset.LoadSynchronous(), bBakeSucceeded);
+    FCoreMetaDataEditorDelegates::OnAssetBaked.Broadcast(Asset.ToSoftObjectPath(), bBakeSucceeded);
     return bBakeSucceeded;
 }
 
 bool UMetaDataEditorSubsystem::ExtractAssetTraits(const TSoftObjectPtr<UObject>& Asset,
-    TArray<TInstancedStruct<FMetaDataTrait_Base>> OutTraits)
+    TArray<TInstancedStruct<FMetaDataTrait_Base>>& OutTraits)
 {
     IInterface_AssetUserData* MetadataInterface = Cast<IInterface_AssetUserData>(Asset.LoadSynchronous());
     
     // If the saved object is completely unrelated to your trait pipeline, exit cleanly
     if (!MetadataInterface)
     {
+        UE_LOG(LogMetaDataEditorSubsystem, Warning,
+            TEXT("MetaData Baker : Asset [%s] does not implement Asset User Data interface, cannot extract asset traits"),
+            *Asset.ToString());
         return false;
     }
 
@@ -245,9 +324,9 @@ bool UMetaDataEditorSubsystem::ExtractAssetTraits(const TSoftObjectPtr<UObject>&
     const TArray<UAssetUserData*>* MetaData = MetadataInterface->GetAssetUserDataArray();
     if (!MetaData || MetaData->Num() == 0)
     {
-        UE_LOG(LogMetaDataBakingLibrary, Warning, TEXT("MetaData Baker : No Asset User Data found on [%s]"), *Asset->GetFName().ToString());
+        UE_LOG(LogMetaDataEditorSubsystem, Warning, TEXT("MetaData Baker : No Asset User Data found on [%s]"), *Asset->GetFName().ToString());
         // Need to broadcast the attempt of the extraction
-        FCoreMetaDataEditorDelegates::OnMetaDataExtracted.Broadcast(Asset.LoadSynchronous(), Result);
+        FCoreMetaDataEditorDelegates::OnMetaDataExtracted.Broadcast(Asset.ToSoftObjectPath(), Result);
         return false;
     }
 
@@ -258,42 +337,16 @@ bool UMetaDataEditorSubsystem::ExtractAssetTraits(const TSoftObjectPtr<UObject>&
         if (UserData && UserData->Implements<UMetaDataExportInterface>())
         {
             bFoundValidData = true;
-            IMetaDataExportInterface::Execute_ExportTraits(UserData, OutTraits, true);
+            IMetaDataExportInterface::Execute_ExportTraits(UserData, OutTraits, false);
         }
     }
+
+    UE_LOG(LogMetaDataEditorSubsystem, Display, TEXT("MetaData Baker: Exported [%d] Traits"),  OutTraits.Num());
 
     Result.bHasTraits = OutTraits.Num() > 0;
     Result.bTraitsSuccessfullyExtracted = bFoundValidData;
 
-    FCoreMetaDataEditorDelegates::OnMetaDataExtracted.Broadcast(Asset.LoadSynchronous(), Result);
+    FCoreMetaDataEditorDelegates::OnMetaDataExtracted.Broadcast(Asset.ToSoftObjectPath(), Result);
     return bFoundValidData;
 }
 
-
-TArray<UDataTable*> UMetaDataEditorSubsystem::GetAllMetadataTables()
-{
-    TArray<UDataTable*> FoundTables;
-    
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-    TArray<FAssetData> AssetDataList;
-    
-    // Search for all Data Tables
-    AssetRegistryModule.Get().GetAssetsByClass(UDataTable::StaticClass()->GetClassPathName(), AssetDataList);
-
-    for (const FAssetData& AssetData : AssetDataList)
-    {
-        // Only load the table if it uses our specific Registry Item Struct
-        FString RowStructName;
-        if (AssetData.GetTagValue(FName("RowStructure"), RowStructName))
-        {
-            if (RowStructName.Contains(TEXT("MetaDataRegistryItem")))
-            {
-                if (UDataTable* Table = Cast<UDataTable>(AssetData.GetAsset()))
-                {
-                    FoundTables.Add(Table);
-                }
-            }
-        }
-    }
-    return FoundTables;
-}

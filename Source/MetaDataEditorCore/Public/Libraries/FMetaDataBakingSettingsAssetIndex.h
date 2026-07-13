@@ -29,4 +29,12 @@ struct FMetaDataBakingSettingsAssetIndex
 		// We hash the SoftObjectPtr directly
 		return GetTypeHash(Item.Asset); 
 	}
+
+	// Required for Binary Serialisation
+	friend FArchive& operator<<(FArchive& Ar, FMetaDataBakingSettingsAssetIndex& Index)
+	{
+		Ar << Index.Asset;
+		Ar << Index.AssetStatus;
+		return Ar;
+	}
 };

@@ -13,12 +13,26 @@
 DECLARE_LOG_CATEGORY_EXTERN(LogMetaDataSettings, Log, Log);
 
 USTRUCT(BlueprintType)
+struct FMetaDataStorageProviderEntry
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(EditDefaultsOnly, Instanced)
+	UMetaDataStorageProvider_Base* Provider;
+	
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Naming")
+	UMetaDataNamingConvention* NamingConvention;
+
+};
+
+
+USTRUCT(BlueprintType)
 struct FMetadataProviderArray
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditDefaultsOnly, Instanced)
-	TArray<UMetaDataStorageProvider_Base*> ProviderArray;
+	UPROPERTY(EditDefaultsOnly)
+	TArray<FMetaDataStorageProviderEntry> ProviderArray;
 
 };
 
@@ -34,20 +48,18 @@ public:
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 
 	UFUNCTION(BlueprintCallable)
-	UMetaDataNamingConvention* GetNamingConvention() const {return NamingConvention;}
-
-	UFUNCTION(BlueprintCallable)
 	FMetadataProviderArray GetTraitProviders(const UScriptStruct* Struct) const {return TraitRoutingMap.FindRef(Struct);}
 
-	void AssignCache(TSet<TSoftObjectPtr<UObject>> Cache);
+	UFUNCTION(BlueprintCallable)
+	const TMap<UScriptStruct*, FMetadataProviderArray> GetTraitRoutingMap() const {return TraitRoutingMap;}
+
+	void AssignCache(const TSet<TSoftObjectPtr<UObject>>& Cache);
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TSet<TSoftObjectPtr<UObject>> CachedAssets;
 	
 protected:
 	
-	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Naming")
-	UMetaDataNamingConvention* NamingConvention;
 	
 	// The central routing map. Links a Trait Struct to its destination Storage Providers.
 	UPROPERTY(EditDefaultsOnly, Category = "Routing")

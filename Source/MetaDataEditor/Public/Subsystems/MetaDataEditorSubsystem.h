@@ -41,14 +41,16 @@ protected:
 
 	bool BakeBakerySetting(UMetaDataBakingSettingsDataAsset* BakerySetting);
 
-	bool BakeCachedAsset(const UMetaDataBakingSettingsDataAsset* BakerySetting, const TSoftObjectPtr<>& Asset);
-	bool ExtractAssetTraits(const TSoftObjectPtr<>& Asset, TArray<TInstancedStruct<FMetaDataTrait_Base>> OutTraits);
+	bool BakeCachedAsset(const UMetaDataBakingSettingsDataAsset* BakerySetting, const TSoftObjectPtr<UObject>& Asset);
 	
-	TArray<UDataTable*> GetAllMetadataTables();
-	
-
+	bool ExtractAssetTraits(const TSoftObjectPtr<>& Asset, TArray<TInstancedStruct<FMetaDataTrait_Base>>& OutTraits);
 	
 	UPROPERTY(Transient) // Use Transient so it doesn't serialize the reference itself
 	TSet<TObjectPtr<UObject>> ModifiedStorageProviders;
 
+private:
+
+	// todo : Scoped Baking Session for automatic flush detection
+	int64 _BakeSessionDepth;
+	
 };

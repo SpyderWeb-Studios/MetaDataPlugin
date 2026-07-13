@@ -3,8 +3,8 @@
 #include "CoreMinimal.h"
 #include "FExtractionResult.h"
 
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnMetaDataAssetBaked, UObject* /*Asset*/, bool /*bSuccess*/);
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnMetaDataExtracted, UObject* /*Asset*/, FMetaDataExtractionResult /*bSuccess*/);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnMetaDataAssetBaked, const FSoftObjectPath& /*Asset*/, bool /*bSuccess*/);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnMetaDataExtracted,  const FSoftObjectPath& /*Asset*/, FMetaDataExtractionResult /*bSuccess*/);
 
 struct METADATAEDITORCORE_API FCoreMetaDataEditorDelegates
 {
