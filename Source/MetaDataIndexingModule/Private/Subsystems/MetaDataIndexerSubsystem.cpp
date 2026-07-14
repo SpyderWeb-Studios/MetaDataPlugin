@@ -2,6 +2,8 @@
 
 
 #include "Subsystems/MetaDataIndexerSubsystem.h"
+
+#include "AssetRegistry/AssetData.h"
 #include "Libraries/FCoreMetaDataEditorDelegates.h"
 #include "DataAssets/BakingSettings/MetaDataBakingSettingsDataAsset.h"
 #include "Engine/AssetManager.h"
@@ -11,6 +13,8 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "Interfaces/Interface_AssetUserData.h"
+#include "Misc/FileHelper.h"
 
 DEFINE_LOG_CATEGORY(LogMetaDataIndexer);
 
@@ -157,6 +161,12 @@ TSoftObjectPtr<UMetaDataBakingSettingsDataAsset> UMetaDataIndexerSubsystem::GetB
 
 void UMetaDataIndexerSubsystem::RefreshDataAssetCache(UMetaDataBakingSettingsDataAsset* DataAsset)
 {
+	if (!IsValid(DataAsset))
+	{
+		UE_LOG(LogMetaDataIndexer, Warning, TEXT("RefreshDataAssetCache: Invalid DataAsset provided."));
+		return;
+	}
+	
 	FString TargetFolder = FPackageName::GetLongPackagePath(FSoftObjectPath(DataAsset).GetAssetPath().GetPackageName().ToString());
 		
     UE_LOG(LogMetaDataIndexer, Log, TEXT("Searching for assets in [%s]"), *TargetFolder);

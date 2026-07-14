@@ -39,6 +39,11 @@
 			"Name": "MetaDataGameplayTags",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "MetaDataMeshSocket",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
@@ -48,6 +53,10 @@
 		},
 		{
 			"Name": "DataRegistry",
+			"Enabled": true
+		},
+		{
+			"Name": "EditorScriptingUtilities",
 			"Enabled": true
 		}
 	]

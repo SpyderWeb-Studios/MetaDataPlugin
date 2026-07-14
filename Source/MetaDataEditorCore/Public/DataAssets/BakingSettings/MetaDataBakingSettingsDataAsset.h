@@ -19,10 +19,10 @@ struct FMetaDataStorageProviderEntry
 	GENERATED_BODY()
 	
 	UPROPERTY(EditDefaultsOnly, Instanced)
-	UMetaDataStorageProvider_Base* Provider;
+	UMetaDataStorageProvider_Base* Provider = nullptr;
 	
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Naming")
-	UMetaDataNamingConvention* NamingConvention;
+	UMetaDataNamingConvention* NamingConvention = nullptr;
 
 };
 
