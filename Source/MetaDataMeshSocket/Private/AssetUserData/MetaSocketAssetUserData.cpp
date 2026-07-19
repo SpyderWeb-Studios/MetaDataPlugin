@@ -9,6 +9,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/SkeletalMeshSocket.h"
 
+INCLUDE_INSTANCED_STRUCTS
 #include "Libraries/MetaData/FSocketTagMetaData.h"
 
 #if WITH_EDITOR
@@ -44,9 +45,9 @@ void UMetaSocketAssetUserData::ExportTraits_Implementation(TArray<TInstancedStru
 	for(const TTuple<FName, FInternalSocketValue> & TagData : InternalSocketData)
 	{
 		TInstancedStruct<FSocketTagMetaData> ExportedSocketData;
-		ExportedSocketData->SocketName = TagData.Key;
-		ExportedSocketData->SocketAttachmentQuery = TagData.Value.SocketAttachmentQuery;
-		ExportedSocketData->SocketTagContainer = TagData.Value.SocketTagContainer;
+		ExportedSocketData.GetMutablePtr<FSocketTagMetaData>()->SocketName = TagData.Key;
+		ExportedSocketData.GetMutablePtr<FSocketTagMetaData>()->SocketAttachmentQuery = TagData.Value.SocketAttachmentQuery;
+		ExportedSocketData.GetMutablePtr<FSocketTagMetaData>()->SocketTagContainer = TagData.Value.SocketTagContainer;
 		
 		OutTraits.Add(ExportedSocketData);
 	}
